@@ -1,6 +1,12 @@
+---
+name: doc
+model: inherit
+description: Docs are part of the feature, README, ADRs, workflow docs
+---
+
 id: doc
 name: Documentation Writer
-model: claude-sonnet-4
+model: Auto
 mode: agent  # docs-focused; writes and updates documentation
 
 system_prompt: |

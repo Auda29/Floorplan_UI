@@ -1,6 +1,12 @@
+---
+name: implementer
+model: inherit
+description: Concrete code changes, 1 task = 1 diff block
+---
+
 id: implementer
 name: Code Writer
-model: claude-sonnet-4
+model: Auto
 mode: agent  # implementation-focused; writes concrete code diffs
 
 system_prompt: |

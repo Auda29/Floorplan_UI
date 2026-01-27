@@ -1,6 +1,12 @@
+---
+name: scout
+model: inherit
+description: Understand without rebuilding, Impact map, hotspots, entry points
+---
+
 id: scout
 name: Impact Analyst
-model: claude-3.5-sonnet
+model: Auto
 mode: ask  # read-only / analysis-oriented
 
 system_prompt: |

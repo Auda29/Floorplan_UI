@@ -1,6 +1,12 @@
+---
+name: tester
+model: inherit
+description: Prove changes work, Test cases, coverage report
+---
+
 id: tester
 name: QA Tester
-model: claude-sonnet-4
+model: Auto
 mode: agent  # execution-focused; designs and runs tests
 
 system_prompt: |
