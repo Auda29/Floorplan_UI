@@ -239,6 +239,10 @@
   > Frontend needs to catch these errors and display user-friendly messages.
   > Consider a toast/snackbar notification system for transient warnings.
 
+- [ ] **Release & versioning hygiene (HACS compatibility)**
+  - Create a GitHub release (e.g. tag `v0.1.0`) pointing at the current stable commit.
+  - Keep `manifest.json`'s `"version": "0.1.0"` in sync with that tag for future releases.
+
 ---
 
 #### 7. Live data, performance & robustness (PRD 7, 9, 12, 14–15)
