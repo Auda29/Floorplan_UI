@@ -1,0 +1,17 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: floorplan-ui-ha
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8124:8123"
+    volumes:
+      # HA config directory
+      - ./ha_config:/config
+      # Mount custom component for development
+      - ./custom_components:/config/custom_components
+      # Mount frontend build output
+      - ./frontend/dist:/config/www/floorplan-ui
+    environment:
+      - TZ=Europe/Berlin
