@@ -290,6 +290,11 @@
   - Keyboard shortcuts for common actions in the editor.
   - Contextual tooltips and inline help.
 
+- [ ] **UI-based integration setup**
+  - Implement a minimal `config_flow.py` so the integration can be added from the HA UI.
+  - Set `"config_flow": true` in `manifest.json` once the flow exists.
+  - Keep YAML-based configuration (`floorplan_ui:`) working as a fallback.
+
 ---
 
 ### Changelog
