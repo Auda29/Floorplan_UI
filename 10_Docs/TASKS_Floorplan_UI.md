@@ -48,7 +48,20 @@
   - ✅ Image error handling:
     - Graceful error state display when background image fails to load.
     - User can re-upload via Edit mode.
-  - ⬜ No Area shape drawing/editing (rect/polygon) or binding to HA Areas.
+  - ✅ Area shapes (rectangles):
+    - Dedicated `_areasLayer` for area rendering separate from background.
+    - "Add Area (Rect)" button in edit mode creates centered rectangles.
+    - Click-to-select with visual feedback (thicker stroke).
+    - Drag-to-reposition with automatic persistence.
+    - Properties panel shows selected area details.
+    - Delete confirmation dialog for safety.
+  - ✅ Area binding to HA Areas:
+    - Loads HA areas via `floorplan_ui/list_registry` on startup.
+    - Dropdown in properties panel to bind area shapes to HA areas.
+    - Binding state persisted with area configuration.
+  - ⬜ No polygon area support yet (only rectangles).
+  - ⬜ No resize handles or Transformer for rectangles.
+  - ⬜ No UI to edit area styles (colors, opacity).
   - ⬜ No entity palette, marker placement/editing, tags, or click → HA More-Info integration.
   - ⬜ No view-based filtering/rendering logic (views are UI tabs only).
   - ⬜ No overlays (primary/secondary values, badges), aggregates, or live state subscriptions.
@@ -104,40 +117,66 @@
 
 ---
 
-#### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3)
+#### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3) 🔶 IN PROGRESS
 
 > **Review notes (2026-01-27):**
 > - This is the logical next milestone now that M1 is complete.
 > - TypeScript types for `AreaShape` already exist in `home-assistant.ts` - good foundation.
 > - Backend normalization already handles `areas` as a list - ready for data.
-> - Recommend: Create a dedicated `shapes-layer` in Konva separate from `background-layer`.
-> - Consider: Start with rectangles only (simpler), then add polygon support.
+> - ✅ Dedicated `_areasLayer` created in Konva separate from `background-layer`.
+> - ✅ Rectangle support implemented; polygon support still pending.
 
-- [ ] **Canvas shape toolbox**
-  - Add edit-mode tools to create rectangles and polygons on the Konva stage.
-  - Support selection, dragging, resizing (rect), and vertex manipulation (polygon).
+- [x] **Area shape persistence** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
+  - ~~Extend backend config model to include `areas` with fields from PRD section 11.3.~~
+  - ~~Ensure round-trip between UI edits and stored config.~~
 
-  > **Recommendation:** Use Konva's built-in `Transformer` for rect resize handles.
-  > Polygon vertex editing will need custom anchor points.
+  > **Review notes (2026-01-27):**
+  > - Full persistence working via `saveConfig()` and `_renderAreas()`.
+  > - Areas are loaded from config and rendered on canvas.
+  > - Updates (drag, bind, delete) are saved immediately to backend.
+  > - Backend normalization already handles `areas` as a list - working well.
 
-- [ ] **Area binding to HA Areas**
-  - Use `floorplan_ui/list_registry` to fetch areas.
-  - Add a properties panel to bind a drawn shape to a specific `area_id`.
+- [x] **Area binding to HA Areas** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
+  - ~~Use `floorplan_ui/list_registry` to fetch areas.~~
+  - ~~Add a properties panel to bind a drawn shape to a specific `area_id`.~~
 
-  > **Note:** The `list_registry` WebSocket API is already implemented and returns areas.
-  > Frontend just needs to call it and display a dropdown/picker.
+  > **Review notes (2026-01-27):**
+  > - `_loadHAAreas()` successfully fetches areas via `list_registry` WebSocket API.
+  > - Properties panel appears when an area is selected in edit mode.
+  > - Dropdown shows all HA areas with "Unbound" option.
+  > - Binding saved via `_onBindAreaChange()` with immutable state updates.
+  > - Good UX: Selected area info displayed prominently.
 
-- [ ] **Area style configuration**
-  - Store and edit `AreaShape.style` properties (fill, stroke, opacity, etc.).
-  - Respect these styles at render time; ensure they are per-plan as described in PRD.
+- [x] **Canvas shape toolbox (rectangles)** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
+  - ~~Add edit-mode tool to create rectangles on the Konva stage.~~
+  - ~~Support selection and dragging.~~
 
-- [ ] **Area shape persistence**
-  - Extend backend config model to include `areas` with fields from PRD section 11.3.
-  - Ensure round-trip between UI edits and stored config.
+  > **Review notes (2026-01-27):**
+  > - `_addAreaRect()` creates centered rectangles with reasonable default sizing.
+  > - Click-to-select working with visual feedback (stroke thickens to 4px).
+  > - Drag-to-reposition working with `dragend` event handler.
+  > - Clear selection on empty canvas click - good UX.
+  > - Areas automatically made draggable in edit mode.
+  > - **Strengths:**
+  >   - Immutable state updates with spread operator throughout.
+  >   - Unique IDs using `Date.now()` - simple and effective.
+  >   - Event bubbling properly cancelled (`evt.cancelBubble = true`).
+  >   - Confirmation dialog for area deletion.
 
-  > **Note:** Backend already supports arbitrary config structure and normalizes `areas` to a list.
-  > Frontend `Plan.areas` is typed as `AreaShape[]` - ready for use.
-  > Consider adding area-level validation in `_normalize_config()` when implementing.
+- [ ] **Canvas shape toolbox (advanced features)**
+  - Add resize handles for rectangles (use Konva's `Transformer`).
+  - Add polygon creation tool with vertex manipulation.
+  - Add visual indicators for bound vs unbound areas.
+
+  > **Recommendation:** Konva's built-in `Transformer` provides resize/rotate handles for free.
+  > Polygon vertex editing will need custom anchor points (Konva `Circle` nodes).
+
+- [ ] **Area style configuration UI**
+  - Add UI controls to edit `AreaShape.style` properties (fill color, stroke color, opacity, strokeWidth).
+  - Styles are already stored and applied at render time - just need editor UI.
+
+  > **Current state:** Basic styles work (fill, stroke, opacity) but are hardcoded.
+  > Need color pickers and sliders in the properties panel for selected areas.
 
 ---
 
@@ -301,6 +340,10 @@
 
 | Date | Commit | Changes |
 |------|--------|---------|
+| 2026-01-27 | `bec8768` | **UI-based integration setup** - implemented `config_flow.py` for HA UI integration setup |
+| 2026-01-27 | `b9d7e7d` | **Area management enhancements** - clear selection on canvas click, area binding UI, delete confirmation |
+| 2026-01-27 | `adc1477` | **Basic areas editor** - added HACS metadata and areas editing foundation |
+| 2026-01-27 | `7d5a8ba` | **Area shapes & rendering** - dedicated areas layer, rectangle tool, HA area loading, selection & dragging |
 | 2026-01-27 | `a407022` | **Config validation & normalization** - server-side validation in `save_config`, comprehensive normalization with defaults, error reporting to client |
 | 2026-01-27 | `62fafdf` | Documentation updates for multi-plan management |
 | 2026-01-27 | `06da594` | Multi-plan management (select, rename, delete), image error handling |
@@ -315,8 +358,9 @@
 | Milestone | Status | Key Commits |
 |-----------|--------|-------------|
 | **M1: Hello Floorplan** | ✅ **COMPLETE** | `a6a6a20`, `06da594`, `a407022` |
-| **M2: Area Shapes** | ⬜ Not started | - |
+| **M2: Area Shapes** | 🔶 **IN PROGRESS** (rectangles ✅, polygons ⬜) | `7d5a8ba`, `adc1477`, `b9d7e7d` |
 | **M3: Markers** | ⬜ Not started | - |
 | **M4: Views** | ⬜ Not started | - |
 | **M5: Overlays** | ⬜ Not started | - |
 | **M6: Export/Import** | 🔶 Partial (validation backend ready) | `a407022` |
+| **M8: Polish** | 🔶 Partial (UI integration setup ✅) | `bec8768` |
