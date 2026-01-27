@@ -55,7 +55,17 @@ async def websocket_save_config(
 ) -> None:
     """Save floorplan configuration."""
     store = hass.data[DOMAIN]["store"]
-    await store.async_update_config(msg["config"])
+    try:
+        await store.async_update_config(msg["config"])
+    except ValueError as err:
+        _LOGGER.warning("Failed to save floorplan config: %s", err)
+        connection.send_error(
+            msg["id"],
+            "invalid_config",
+            str(err),
+        )
+        return
+
     connection.send_result(msg["id"], {"success": True})
 
 
