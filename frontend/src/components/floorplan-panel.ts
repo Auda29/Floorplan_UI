@@ -65,6 +65,21 @@ export class FloorplanPanel extends LitElement {
       font-weight: 500;
     }
 
+    .plan-select {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: inherit;
+      font-size: 14px;
+    }
+
+    .plan-select select {
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: none;
+      font-size: 14px;
+    }
+
     .view-tabs {
       display: flex;
       gap: 4px;
@@ -314,7 +329,15 @@ export class FloorplanPanel extends LitElement {
 
   private _getCurrentPlan(): Plan | null {
     if (!this._config || !this._currentPlanId) return null;
-    return this._config.plans.find((p) => p.plan_id === this._currentPlanId) || null;
+    const plan = this._config.plans.find((p) => p.plan_id === this._currentPlanId) || null;
+
+    // If the current plan id no longer exists (e.g. after deletion), reset selection
+    if (!plan && this._config.plans.length > 0) {
+      this._currentPlanId = this._config.plans[0].plan_id;
+      return this._config.plans[0];
+    }
+
+    return plan;
   }
 
   private _renderFloorplan() {
@@ -327,45 +350,7 @@ export class FloorplanPanel extends LitElement {
     const stageHeight = this._stage.height();
 
     if (!plan) {
-      // Empty state - draw on canvas
-      const bg = new Konva.Rect({
-        x: 0,
-        y: 0,
-        width: stageWidth,
-        height: stageHeight,
-        fill: "#f5f5f5",
-      });
-      this._backgroundLayer.add(bg);
-
-      const icon = new Konva.Text({
-        x: stageWidth / 2,
-        y: stageHeight / 2 - 50,
-        text: "🏠",
-        fontSize: 48,
-      });
-      icon.offsetX(icon.width() / 2);
-      this._backgroundLayer.add(icon);
-
-      const title = new Konva.Text({
-        x: stageWidth / 2,
-        y: stageHeight / 2 + 10,
-        text: "No Floorplan Loaded",
-        fontSize: 20,
-        fontStyle: "bold",
-        fill: "#333",
-      });
-      title.offsetX(title.width() / 2);
-      this._backgroundLayer.add(title);
-
-      const subtitle = new Konva.Text({
-        x: stageWidth / 2,
-        y: stageHeight / 2 + 40,
-        text: 'Click "Edit" → "Upload Image" to get started',
-        fontSize: 14,
-        fill: "#666",
-      });
-      subtitle.offsetX(subtitle.width() / 2);
-      this._backgroundLayer.add(subtitle);
+      this._drawEmptyState(stageWidth, stageHeight);
     } else if (plan.background?.url) {
       // Load background image
       const imageObj = new Image();
@@ -378,8 +363,19 @@ export class FloorplanPanel extends LitElement {
           height: plan.background.height || imageObj.height,
         });
         this._backgroundLayer!.add(img);
-        this._backgroundLayer!.draw();
-        this._fitToScreen(imageObj.width, imageObj.height);
+        try {
+          this._backgroundLayer!.draw();
+          this._fitToScreen(imageObj.width, imageObj.height);
+        } catch (err) {
+          console.error("Error rendering floorplan image:", err);
+          this._backgroundLayer!.destroyChildren();
+          this._drawImageErrorState(stageWidth, stageHeight);
+        }
+      };
+      imageObj.onerror = () => {
+        console.error("Failed to load floorplan image");
+        this._backgroundLayer!.destroyChildren();
+        this._drawImageErrorState(stageWidth, stageHeight);
       };
       imageObj.src = plan.background.url;
     }
@@ -402,6 +398,127 @@ export class FloorplanPanel extends LitElement {
 
   private _toggleEditMode() {
     this._editMode = !this._editMode;
+  }
+
+  private _selectPlan(e: Event) {
+    if (!this._config) return;
+    const select = e.target as HTMLSelectElement;
+    const planId = select.value || null;
+    this._currentPlanId = planId;
+  }
+
+  private _renameCurrentPlan() {
+    if (!this._config || !this._currentPlanId) return;
+    const plan = this._config.plans.find((p) => p.plan_id === this._currentPlanId);
+    if (!plan) return;
+
+    const newName = window.prompt("Rename plan", plan.name);
+    if (!newName) return;
+
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === plan.name) return;
+
+    this._config = {
+      ...this._config,
+      plans: this._config.plans.map((p) =>
+        p.plan_id === this._currentPlanId ? { ...p, name: trimmed } : p
+      ),
+    };
+    this.saveConfig();
+  }
+
+  private _deleteCurrentPlan() {
+    if (!this._config || !this._currentPlanId) return;
+    if (!window.confirm("Delete current plan? This cannot be undone.")) return;
+
+    const remainingPlans = this._config.plans.filter((p) => p.plan_id !== this._currentPlanId);
+
+    this._config = {
+      ...this._config,
+      plans: remainingPlans,
+    };
+
+    if (remainingPlans.length > 0) {
+      this._currentPlanId = remainingPlans[0].plan_id;
+    } else {
+      this._currentPlanId = null;
+    }
+
+    this.saveConfig();
+    this._renderFloorplan();
+  }
+
+  private _drawEmptyState(stageWidth: number, stageHeight: number) {
+    const bg = new Konva.Rect({
+      x: 0,
+      y: 0,
+      width: stageWidth,
+      height: stageHeight,
+      fill: "#f5f5f5",
+    });
+    this._backgroundLayer!.add(bg);
+
+    const icon = new Konva.Text({
+      x: stageWidth / 2,
+      y: stageHeight / 2 - 50,
+      text: "🏠",
+      fontSize: 48,
+    });
+    icon.offsetX(icon.width() / 2);
+    this._backgroundLayer!.add(icon);
+
+    const title = new Konva.Text({
+      x: stageWidth / 2,
+      y: stageHeight / 2 + 10,
+      text: "No Floorplan Loaded",
+      fontSize: 20,
+      fontStyle: "bold",
+      fill: "#333",
+    });
+    title.offsetX(title.width() / 2);
+    this._backgroundLayer!.add(title);
+
+    const subtitle = new Konva.Text({
+      x: stageWidth / 2,
+      y: stageHeight / 2 + 40,
+      text: 'Click "Edit" → "Upload Image" to get started',
+      fontSize: 14,
+      fill: "#666",
+    });
+    subtitle.offsetX(subtitle.width() / 2);
+    this._backgroundLayer!.add(subtitle);
+  }
+
+  private _drawImageErrorState(stageWidth: number, stageHeight: number) {
+    const bg = new Konva.Rect({
+      x: 0,
+      y: 0,
+      width: stageWidth,
+      height: stageHeight,
+      fill: "#fff3e0",
+    });
+    this._backgroundLayer!.add(bg);
+
+    const title = new Konva.Text({
+      x: stageWidth / 2,
+      y: stageHeight / 2 - 10,
+      text: "Failed to load floorplan image",
+      fontSize: 18,
+      fontStyle: "bold",
+      fill: "#e65100",
+    });
+    title.offsetX(title.width() / 2);
+    this._backgroundLayer!.add(title);
+
+    const subtitle = new Konva.Text({
+      x: stageWidth / 2,
+      y: stageHeight / 2 + 20,
+      text: "Try re-uploading the image in Edit mode.",
+      fontSize: 14,
+      fill: "#e65100",
+    });
+    subtitle.offsetX(subtitle.width() / 2);
+    this._backgroundLayer!.add(subtitle);
   }
 
   private _setView(viewId: string) {
@@ -459,11 +576,23 @@ export class FloorplanPanel extends LitElement {
       { id: "network", name: "Network" },
     ];
 
+    const plans = this._config?.plans ?? [];
+    const currentPlan = this._getCurrentPlan();
+
     return html`
       <div class="container">
         <div class="toolbar">
           <div class="toolbar-left">
             <h1>Floorplan</h1>
+            <div class="plan-select">
+              <span>Plan:</span>
+              <select @change=${this._selectPlan} .value=${currentPlan?.plan_id ?? ""}>
+                <option value="">${plans.length === 0 ? "No plans" : "Select plan"}</option>
+                ${plans.map(
+                  (plan) => html` <option value=${plan.plan_id}>${plan.name}</option> `
+                )}
+              </select>
+            </div>
             <div class="view-tabs">
               ${views.map(
                 (view) => html`
@@ -491,6 +620,12 @@ export class FloorplanPanel extends LitElement {
           ? html`
               <div class="edit-toolbar">
                 <button @click=${this._triggerFileUpload}>📁 Upload Image</button>
+                <button ?disabled=${!currentPlan} @click=${this._renameCurrentPlan}>
+                  Rename Plan
+                </button>
+                <button ?disabled=${!currentPlan} @click=${this._deleteCurrentPlan}>
+                  Delete Plan
+                </button>
               </div>
             `
           : ""}
