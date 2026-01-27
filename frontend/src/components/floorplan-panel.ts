@@ -297,6 +297,19 @@ export class FloorplanPanel extends LitElement {
     this._areasLayer = new Konva.Layer();
     this._stage.add(this._areasLayer);
 
+    // Clear selection when clicking on empty canvas in edit mode
+    this._stage.on("click", (e) => {
+      if (!this._editMode) return;
+      // Ignore clicks on shapes (they handle their own selection)
+      if (e.target === this._stage) {
+        this._selectedAreaId = null;
+        for (const rect of this._areaRects.values()) {
+          rect.strokeWidth(2);
+        }
+        this._areasLayer?.draw();
+      }
+    });
+
     // Zoom with mouse wheel
     this._stage.on("wheel", (e) => {
       e.evt.preventDefault();
@@ -598,7 +611,7 @@ export class FloorplanPanel extends LitElement {
     // Simple visual selection: thicken stroke for selected area
     for (const [id, rect] of this._areaRects.entries()) {
       const isSelected = id === areaId;
-      rect.strokeWidth(isSelected ? (rect.strokeWidth() || 2) * 1.8 : rect.strokeWidth() || 2);
+      rect.strokeWidth(isSelected ? 4 : 2);
     }
     this._areasLayer?.draw();
   }
@@ -695,6 +708,62 @@ export class FloorplanPanel extends LitElement {
     }
   }
 
+  private _getSelectedArea(): AreaShape | null {
+    if (!this._config || !this._selectedAreaId) return null;
+    const plan = this._getCurrentPlan();
+    if (!plan) return null;
+    return (plan.areas ?? []).find((a) => a.id === this._selectedAreaId) ?? null;
+  }
+
+  private _onBindAreaChange(e: Event) {
+    if (!this._config || !this._selectedAreaId) return;
+    const select = e.target as HTMLSelectElement;
+    const newAreaId = select.value;
+    const plan = this._getCurrentPlan();
+    if (!plan) return;
+
+    const updatedPlans = this._config.plans.map((p) => {
+      if (p.plan_id !== plan.plan_id) return p;
+      return {
+        ...p,
+        areas: (p.areas ?? []).map((area) =>
+          area.id === this._selectedAreaId ? { ...area, area_id: newAreaId } : area
+        ),
+      };
+    });
+
+    this._config = {
+      ...this._config,
+      plans: updatedPlans,
+    };
+
+    this.saveConfig();
+  }
+
+  private _deleteSelectedArea() {
+    if (!this._config || !this._selectedAreaId) return;
+    const plan = this._getCurrentPlan();
+    if (!plan) return;
+    if (!window.confirm("Delete selected area? This cannot be undone.")) return;
+
+    const updatedPlans = this._config.plans.map((p) => {
+      if (p.plan_id !== plan.plan_id) return p;
+      return {
+        ...p,
+        areas: (p.areas ?? []).filter((area) => area.id !== this._selectedAreaId),
+      };
+    });
+
+    this._config = {
+      ...this._config,
+      plans: updatedPlans,
+    };
+
+    this._selectedAreaId = null;
+    this.saveConfig();
+    this._renderFloorplan();
+  }
+
   private _setView(viewId: string) {
     this._currentView = viewId;
   }
@@ -752,6 +821,7 @@ export class FloorplanPanel extends LitElement {
 
     const plans = this._config?.plans ?? [];
     const currentPlan = this._getCurrentPlan();
+    const selectedArea = this._getSelectedArea();
 
     return html`
       <div class="container">
@@ -804,6 +874,30 @@ export class FloorplanPanel extends LitElement {
                   + Add Area (Rect)
                 </button>
               </div>
+              ${selectedArea
+                ? html`
+                    <div class="edit-toolbar">
+                      <span>Selected area:</span>
+                      <span><strong>${selectedArea.id}</strong></span>
+                      <label>
+                        HA Area:
+                        <select
+                          @change=${this._onBindAreaChange}
+                          .value=${selectedArea.area_id ?? ""}
+                        >
+                          <option value="">Unbound</option>
+                          ${this._haAreas.map(
+                            (area) =>
+                              html`<option value=${area.id}>
+                                ${area.name}
+                              </option>`
+                          )}
+                        </select>
+                      </label>
+                      <button @click=${this._deleteSelectedArea}>Delete Area</button>
+                    </div>
+                  `
+                : ""}
             `
           : ""}
 
