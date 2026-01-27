@@ -12,11 +12,17 @@
     - Default config structure matches PRD root: `version`, `plans` (list), `views` (list).
     - Default views provided: `all`, `heating`, `lights`, `network` with basic filter stubs.
     - Read/write operations for the full config blob implemented (`async_get_config`, `async_update_config`).
+  - ✅ Configuration validation & normalization:
+    - `_validate_config_structure()` validates top-level structure (version, plans, views types).
+    - `_normalize_config()` fills missing/invalid fields with sensible defaults.
+    - Invalid configs on load are reset to defaults with warning logs.
+    - `save_config` WebSocket returns `invalid_config` error for malformed data.
   - ✅ WebSocket API:
     - `floorplan_ui/get_config` returns stored configuration.
-    - `floorplan_ui/save_config` persists provided configuration.
+    - `floorplan_ui/save_config` persists provided configuration (with validation).
     - `floorplan_ui/list_registry` returns areas and entities (with optional domain/area filters) from HA registries.
-  - ⬜ No explicit schema validation, migrations between versions, or `validate` WebSocket command yet.
+  - ⬜ No explicit migrations between schema versions yet.
+  - ⬜ No `floorplan_ui/validate` WebSocket command for pre-flight validation.
 
 - **Frontend (custom panel UI)**
   - ✅ Panel shell & wiring:
@@ -47,7 +53,7 @@
   - ⬜ No view-based filtering/rendering logic (views are UI tabs only).
   - ⬜ No overlays (primary/secondary values, badges), aggregates, or live state subscriptions.
   - ⬜ No export/import of configuration as external JSON files.
-  - ⬜ No dedicated validation/warning UI.
+  - ⬜ No dedicated validation/warning UI (backend validates, but frontend doesn't display errors).
 
 ---
 
@@ -55,7 +61,7 @@
 
 > This list is grouped roughly by the milestones in the PRD (section 13), plus technical underpinnings from sections 8–12.
 
-#### 1. Solidify "Hello Floorplan" (Milestone 1)
+#### 1. Solidify "Hello Floorplan" (Milestone 1) ✅ COMPLETE
 
 - [x] **Multi-plan management** ✅ _Completed in commit `06da594` (2026-01-27)_
   - ~~Implement UI to list, select, rename, and delete `Plan` objects.~~
@@ -67,15 +73,24 @@
   > - Auto-fallback to first plan after deletion handles edge cases well.
   > - Minor: `_selectPlan()` could be simplified - currently casts empty string to null implicitly.
 
-- [ ] **Config schema & validation (basic)**
-  - Define a minimal JSON schema / validation layer for `version`, `plans`, and `views`.
-  - Add server-side validation in `save_config` (reject obviously broken configs, log warnings).
+- [x] **Config schema & validation (basic)** ✅ _Completed in commit `a407022` (2026-01-27)_
+  - ~~Define a minimal JSON schema / validation layer for `version`, `plans`, and `views`.~~
+  - ~~Add server-side validation in `save_config` (reject obviously broken configs, log warnings).~~
 
   > **Review notes (2026-01-27):**
-  > - Currently `save_config` accepts any `dict` without validation.
-  > - Recommend: Add basic voluptuous schema validation in `websocket.py` before persisting.
-  > - Consider adding a `floorplan_ui/validate` WebSocket command for client-side pre-validation.
-  > - Priority: Medium - can defer until more complex data structures (areas, markers) are added.
+  > - Excellent implementation in `store.py` with two-phase approach:
+  >   1. `_validate_config_structure()` - strict validation, rejects malformed configs
+  >   2. `_normalize_config()` - lenient normalization, fills defaults for missing fields
+  > - **Strengths:**
+  >   - Comprehensive field-by-field normalization for plans (plan_id, name, background, areas, markers, view)
+  >   - Generates unique plan_ids when missing, avoiding collisions with `seen_ids` set
+  >   - Type coercion with sensible defaults (e.g., width=800, height=600 for missing dimensions)
+  >   - Proper error propagation to WebSocket client via `connection.send_error()`
+  >   - Logging at WARNING level for recoverable issues
+  > - **Potential improvements (non-blocking):**
+  >   - Consider adding validation for individual area/marker objects when those features are implemented
+  >   - Could add a `floorplan_ui/validate` WebSocket command for dry-run validation
+  >   - Frontend doesn't yet display validation errors to the user (see M6 Warning UX task)
 
 - [x] **Resilience to missing/invalid images** ✅ _Completed in commit `06da594` (2026-01-27)_
   - ~~Handle broken `background.url` (404, missing data).~~
@@ -92,8 +107,9 @@
 #### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3)
 
 > **Review notes (2026-01-27):**
-> - This is the logical next milestone now that M1 is nearly complete.
+> - This is the logical next milestone now that M1 is complete.
 > - TypeScript types for `AreaShape` already exist in `home-assistant.ts` - good foundation.
+> - Backend normalization already handles `areas` as a list - ready for data.
 > - Recommend: Create a dedicated `shapes-layer` in Konva separate from `background-layer`.
 > - Consider: Start with rectangles only (simpler), then add polygon support.
 
@@ -119,8 +135,9 @@
   - Extend backend config model to include `areas` with fields from PRD section 11.3.
   - Ensure round-trip between UI edits and stored config.
 
-  > **Note:** Backend already supports arbitrary config structure.
+  > **Note:** Backend already supports arbitrary config structure and normalizes `areas` to a list.
   > Frontend `Plan.areas` is typed as `AreaShape[]` - ready for use.
+  > Consider adding area-level validation in `_normalize_config()` when implementing.
 
 ---
 
@@ -139,6 +156,7 @@
   - Render markers on Konva with icons and labels; support repositioning in Edit mode.
 
   > **Note:** TypeScript `Marker` interface already defined in `home-assistant.ts`.
+  > Backend normalization already handles `markers` as a list.
   > Will need MDI icon rendering - consider using `@mdi/js` package or HA's icon system.
 
 - [ ] **Marker configuration panel**
@@ -159,6 +177,7 @@
   - Allow choosing a default view.
 
   > **Note:** View tabs already render in toolbar. Need to add management UI in edit mode.
+  > Backend normalization preserves existing views or falls back to defaults.
 
 - [ ] **Filter behavior**
   - Implement filtering logic based on view `filters`:
@@ -203,14 +222,22 @@
     - Version checks,
     - Preview/confirmation UI.
 
+  > **Note:** Backend validation/normalization is now in place - import can leverage this.
+  > Consider showing normalization warnings to user during import preview.
+
 - [ ] **Storage versioning & migrations**
   - Introduce explicit migration steps for new schema versions.
   - Ensure old stored configs are upgraded safely on load.
 
   > **Note:** `FloorplanStore` uses `STORAGE_VERSION` constant but no migration logic exists yet.
+  > Current normalization approach handles missing fields gracefully, which helps with forward compatibility.
 
 - [ ] **Warning & validation UX**
   - Surface non-fatal issues (missing entities, missing images, invalid bindings) as warnings in the UI.
+
+  > **Note (2026-01-27):** Backend now validates and returns `invalid_config` errors.
+  > Frontend needs to catch these errors and display user-friendly messages.
+  > Consider a toast/snackbar notification system for transient warnings.
 
 ---
 
@@ -265,7 +292,22 @@
 
 | Date | Commit | Changes |
 |------|--------|---------|
+| 2026-01-27 | `a407022` | **Config validation & normalization** - server-side validation in `save_config`, comprehensive normalization with defaults, error reporting to client |
+| 2026-01-27 | `62fafdf` | Documentation updates for multi-plan management |
 | 2026-01-27 | `06da594` | Multi-plan management (select, rename, delete), image error handling |
 | 2026-01-27 | `ee0404f` | Agent configuration metadata |
 | 2026-01-27 | `c6a951f` | Initial project structure and task list |
 | 2026-01-27 | `a6a6a20` | Initial commit with full M1 foundation |
+
+---
+
+### Milestone Summary
+
+| Milestone | Status | Key Commits |
+|-----------|--------|-------------|
+| **M1: Hello Floorplan** | ✅ **COMPLETE** | `a6a6a20`, `06da594`, `a407022` |
+| **M2: Area Shapes** | ⬜ Not started | - |
+| **M3: Markers** | ⬜ Not started | - |
+| **M4: Views** | ⬜ Not started | - |
+| **M5: Overlays** | ⬜ Not started | - |
+| **M6: Export/Import** | 🔶 Partial (validation backend ready) | `a407022` |
