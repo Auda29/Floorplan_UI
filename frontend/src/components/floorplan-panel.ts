@@ -6,7 +6,13 @@
 import { LitElement, html, css } from "lit";
 import { property, state } from "lit/decorators.js";
 import Konva from "konva";
-import type { HomeAssistant, FloorplanConfig, Plan } from "../types/home-assistant";
+import type {
+  HomeAssistant,
+  FloorplanConfig,
+  Plan,
+  AreaShape,
+  HassArea,
+} from "../types/home-assistant";
 
 export class FloorplanPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -18,10 +24,14 @@ export class FloorplanPanel extends LitElement {
   @state() private _editMode = false;
   @state() private _currentView = "all";
   @state() private _currentPlanId: string | null = null;
+  @state() private _selectedAreaId: string | null = null;
+  @state() private _haAreas: HassArea[] = [];
 
   private _stage: Konva.Stage | null = null;
   private _backgroundLayer: Konva.Layer | null = null;
   private _resizeObserver: ResizeObserver | null = null;
+  private _areasLayer: Konva.Layer | null = null;
+  private _areaRects: Map<string, Konva.Rect> = new Map();
 
   static styles = css`
     :host {
@@ -211,6 +221,7 @@ export class FloorplanPanel extends LitElement {
   async connectedCallback() {
     super.connectedCallback();
     await this._loadConfig();
+    this._loadHAAreas();
   }
 
   disconnectedCallback() {
@@ -283,6 +294,9 @@ export class FloorplanPanel extends LitElement {
     this._backgroundLayer = new Konva.Layer();
     this._stage.add(this._backgroundLayer);
 
+    this._areasLayer = new Konva.Layer();
+    this._stage.add(this._areasLayer);
+
     // Zoom with mouse wheel
     this._stage.on("wheel", (e) => {
       e.evt.preventDefault();
@@ -325,6 +339,8 @@ export class FloorplanPanel extends LitElement {
     this._resizeObserver?.disconnect();
     this._stage?.destroy();
     this._stage = null;
+    this._areasLayer = null;
+    this._areaRects.clear();
   }
 
   private _getCurrentPlan(): Plan | null {
@@ -344,6 +360,8 @@ export class FloorplanPanel extends LitElement {
     if (!this._stage || !this._backgroundLayer) return;
 
     this._backgroundLayer.destroyChildren();
+    this._areasLayer?.destroyChildren();
+    this._areaRects.clear();
 
     const plan = this._getCurrentPlan();
     const stageWidth = this._stage.width();
@@ -366,6 +384,7 @@ export class FloorplanPanel extends LitElement {
         try {
           this._backgroundLayer!.draw();
           this._fitToScreen(imageObj.width, imageObj.height);
+          this._renderAreas(plan);
         } catch (err) {
           console.error("Error rendering floorplan image:", err);
           this._backgroundLayer!.destroyChildren();
@@ -378,9 +397,14 @@ export class FloorplanPanel extends LitElement {
         this._drawImageErrorState(stageWidth, stageHeight);
       };
       imageObj.src = plan.background.url;
+      this._renderAreas(plan);
+    } else if (plan) {
+      // No background image but areas exist
+      this._renderAreas(plan);
     }
 
     this._backgroundLayer.draw();
+    this._areasLayer?.draw();
   }
 
   private _fitToScreen(imgWidth: number, imgHeight: number) {
@@ -398,6 +422,9 @@ export class FloorplanPanel extends LitElement {
 
   private _toggleEditMode() {
     this._editMode = !this._editMode;
+    if (!this._editMode) {
+      this._selectedAreaId = null;
+    }
   }
 
   private _selectPlan(e: Event) {
@@ -446,6 +473,50 @@ export class FloorplanPanel extends LitElement {
 
     this.saveConfig();
     this._renderFloorplan();
+  }
+
+  private _renderAreas(plan: Plan | null) {
+    if (!this._areasLayer || !plan) return;
+
+    this._areasLayer.destroyChildren();
+    this._areaRects.clear();
+
+    for (const area of plan.areas ?? []) {
+      const { shape, style } = area;
+      if (shape.type !== "rect") continue;
+
+      const rect = new Konva.Rect({
+        x: shape.x ?? 0,
+        y: shape.y ?? 0,
+        width: shape.width ?? 100,
+        height: shape.height ?? 80,
+        fill: style.fill ?? "rgba(33, 150, 243, 0.2)",
+        stroke: style.stroke ?? "#2196f3",
+        strokeWidth: style.strokeWidth ?? 2,
+        opacity: style.fillOpacity ?? 0.4,
+        draggable: this._editMode,
+      });
+
+      rect.on("click", (evt) => {
+        evt.cancelBubble = true;
+        if (!this._editMode) return;
+        this._onAreaSelected(area.id);
+      });
+
+      rect.on("dragend", () => {
+        if (!this._editMode) return;
+        const pos = rect.position();
+        this._updateAreaShape(area.id, {
+          x: pos.x,
+          y: pos.y,
+          width: rect.width(),
+          height: rect.height(),
+        });
+      });
+
+      this._areasLayer.add(rect);
+      this._areaRects.set(area.id, rect);
+    }
   }
 
   private _drawEmptyState(stageWidth: number, stageHeight: number) {
@@ -519,6 +590,109 @@ export class FloorplanPanel extends LitElement {
     });
     subtitle.offsetX(subtitle.width() / 2);
     this._backgroundLayer!.add(subtitle);
+  }
+
+  private _onAreaSelected(areaId: string) {
+    this._selectedAreaId = areaId;
+
+    // Simple visual selection: thicken stroke for selected area
+    for (const [id, rect] of this._areaRects.entries()) {
+      const isSelected = id === areaId;
+      rect.strokeWidth(isSelected ? (rect.strokeWidth() || 2) * 1.8 : rect.strokeWidth() || 2);
+    }
+    this._areasLayer?.draw();
+  }
+
+  private _addAreaRect() {
+    if (!this._config || !this._stage) return;
+    const plan = this._getCurrentPlan();
+    if (!plan) return;
+
+    const stageWidth = this._stage.width();
+    const stageHeight = this._stage.height();
+    const width = stageWidth * 0.25;
+    const height = stageHeight * 0.2;
+    const x = (stageWidth - width) / 2;
+    const y = (stageHeight - height) / 2;
+
+    const id = `area_${Date.now()}`;
+    const newArea: AreaShape = {
+      id,
+      area_id: "",
+      shape: {
+        type: "rect",
+        x,
+        y,
+        width,
+        height,
+      },
+      tags: [],
+      style: {
+        fillOpacity: 0.4,
+        strokeWidth: 2,
+        fill: "rgba(33, 150, 243, 0.2)",
+        stroke: "#2196f3",
+      },
+    };
+
+    const updatedPlans = this._config.plans.map((p) =>
+      p.plan_id === plan.plan_id ? { ...p, areas: [...(p.areas ?? []), newArea] } : p
+    );
+
+    this._config = {
+      ...this._config,
+      plans: updatedPlans,
+    };
+
+    this.saveConfig();
+    this._renderFloorplan();
+    this._selectedAreaId = id;
+  }
+
+  private _updateAreaShape(
+    areaId: string,
+    updates: { x?: number; y?: number; width?: number; height?: number }
+  ) {
+    if (!this._config) return;
+    const plan = this._getCurrentPlan();
+    if (!plan) return;
+
+    const updatedPlans = this._config.plans.map((p) => {
+      if (p.plan_id !== plan.plan_id) return p;
+      return {
+        ...p,
+        areas: (p.areas ?? []).map((area) =>
+          area.id === areaId
+            ? {
+                ...area,
+                shape: {
+                  ...area.shape,
+                  ...updates,
+                },
+              }
+            : area
+        ),
+      };
+    });
+
+    this._config = {
+      ...this._config,
+      plans: updatedPlans,
+    };
+
+    this.saveConfig();
+  }
+
+  private async _loadHAAreas() {
+    try {
+      const result = await this.hass.callWS<{ areas: HassArea[] }>({
+        type: "floorplan_ui/list_registry",
+      });
+      this._haAreas = result.areas;
+    } catch (err) {
+      console.error("Failed to load HA areas for floorplan:", err);
+      this._haAreas = [];
+    }
   }
 
   private _setView(viewId: string) {
@@ -625,6 +799,9 @@ export class FloorplanPanel extends LitElement {
                 </button>
                 <button ?disabled=${!currentPlan} @click=${this._deleteCurrentPlan}>
                   Delete Plan
+                </button>
+                <button ?disabled=${!currentPlan} @click=${this._addAreaRect}>
+                  + Add Area (Rect)
                 </button>
               </div>
             `
