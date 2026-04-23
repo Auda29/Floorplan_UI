@@ -438,6 +438,7 @@ export class FloorplanPanel extends LitElement {
     if (!this._editMode) {
       this._selectedAreaId = null;
     }
+    this._syncAreaInteractivity();
   }
 
   private _selectPlan(e: Event) {
@@ -530,6 +531,19 @@ export class FloorplanPanel extends LitElement {
       this._areasLayer.add(rect);
       this._areaRects.set(area.id, rect);
     }
+
+    this._syncAreaInteractivity();
+  }
+
+  private _syncAreaInteractivity() {
+    if (!this._areasLayer) return;
+
+    for (const [id, rect] of this._areaRects.entries()) {
+      rect.draggable(this._editMode);
+      rect.strokeWidth(this._selectedAreaId === id ? 4 : 2);
+    }
+
+    this._areasLayer.draw();
   }
 
   private _drawEmptyState(stageWidth: number, stageHeight: number) {
