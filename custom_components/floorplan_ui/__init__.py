@@ -9,6 +9,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import (
@@ -26,6 +27,7 @@ _LOGGER = logging.getLogger(__name__)
 
 FRONTEND_PATH = Path(__file__).parent / "frontend"
 FRONTEND_BUNDLE = FRONTEND_PATH / "floorplan-ui.js"
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 
 async def _async_register_panel(hass: HomeAssistant) -> bool:
