@@ -1,28 +1,27 @@
 ## Floorplan UI – Implementation Status & Task List
 
-### Current implementation status (Jan 2026)
+### Current implementation status (Jul 2026)
 
 - **Backend (Home Assistant custom component)**
   - ✅ `floorplan_ui` custom component exists with `manifest.json` and can be loaded by Home Assistant.
   - ✅ Panel registration in `async_setup`:
     - Registers a custom panel at `/floorplan-ui` using the `floorplan-ui-panel` web component.
-    - Serves the JS bundle from `/local/floorplan-ui/floorplan-ui.js`.
+    - Serves the committed production bundle from `/floorplan_ui_static/floorplan-ui.js`.
   - ✅ Storage:
     - `FloorplanStore` implemented using HA's `Store` helper with versioning.
     - Default config structure matches PRD root: `version`, `plans` (list), `views` (list).
-    - Default views provided: `all`, `heating`, `lights`, `network` with basic filter stubs.
+    - Default views provided: `all`, `heating`, `lights`, `network`, `entertainment`.
     - Read/write operations for the full config blob implemented (`async_get_config`, `async_update_config`).
   - ✅ Configuration validation & normalization:
-    - `_validate_config_structure()` validates top-level structure (version, plans, views types).
+    - `_validate_config_structure()` validates versioned plans, views, backgrounds, areas and markers.
     - `_normalize_config()` fills missing/invalid fields with sensible defaults.
-    - Invalid configs on load are reset to defaults with warning logs.
+    - Version 1 data is migrated explicitly to schema version 2; unsupported future versions are rejected.
     - `save_config` WebSocket returns `invalid_config` error for malformed data.
   - ✅ WebSocket API:
     - `floorplan_ui/get_config` returns stored configuration.
-    - `floorplan_ui/save_config` persists provided configuration (with validation).
-    - `floorplan_ui/list_registry` returns areas and entities (with optional domain/area filters) from HA registries.
-  - ⬜ No explicit migrations between schema versions yet.
-  - ⬜ No `floorplan_ui/validate` WebSocket command for pre-flight validation.
+    - `floorplan_ui/save_config` persists provided configuration (with validation, size limit and admin guard).
+    - `floorplan_ui/list_registry` returns areas and entities to administrators (with optional domain/area filters).
+  - ✅ `floorplan_ui/validate_config` performs admin-only import pre-flight validation without saving.
 
 - **Frontend (custom panel UI)**
   - ✅ Panel shell & wiring:
@@ -48,12 +47,25 @@
   - ✅ Image error handling:
     - Graceful error state display when background image fails to load.
     - User can re-upload via Edit mode.
-  - ⬜ No Area shape drawing/editing (rect/polygon) or binding to HA Areas.
-  - ⬜ No entity palette, marker placement/editing, tags, or click → HA More-Info integration.
-  - ⬜ No view-based filtering/rendering logic (views are UI tabs only).
-  - ⬜ No overlays (primary/secondary values, badges), aggregates, or live state subscriptions.
-  - ⬜ No export/import of configuration as external JSON files.
-  - ⬜ No dedicated validation/warning UI (backend validates, but frontend doesn't display errors).
+  - ✅ Area shapes (rectangles and basic polygons):
+    - Dedicated `_areasLayer` for area rendering separate from background.
+    - "Add Area (Rect)" button in edit mode creates centered rectangles.
+    - Click-to-select with visual feedback (thicker stroke).
+    - Drag-to-reposition with automatic persistence.
+    - Properties panel shows selected area details.
+    - Delete confirmation dialog for safety.
+  - ✅ Area binding to HA Areas:
+    - Loads HA areas via `floorplan_ui/list_registry` on startup.
+    - Dropdown in properties panel to bind area shapes to HA areas.
+    - Binding state persisted with area configuration.
+  - ✅ Marker selection, placement, dragging, editing, deletion, live values and HA More-Info integration.
+  - ✅ View creation/deletion and domain, tag and area filtering for markers.
+  - ✅ Rectangle resize handles and polygon vertex editing are available for selected areas.
+  - ✅ Area color, stroke, opacity, binding, and tag controls are available in Edit mode.
+  - ✅ Searchable domain/area-filtered entity palette supports drag-and-drop and dropdown placement.
+  - ✅ View-scoped area primary/secondary values and conditional badges are rendered live.
+  - ✅ Full JSON export and validated, confirmed JSON import are available to administrators.
+  - 🔶 Validation and import failures are surfaced inline; a consolidated warning center remains future work.
 
 ---
 
@@ -104,40 +116,66 @@
 
 ---
 
-#### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3)
+#### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3) 🔶 IN PROGRESS
 
 > **Review notes (2026-01-27):**
 > - This is the logical next milestone now that M1 is complete.
 > - TypeScript types for `AreaShape` already exist in `home-assistant.ts` - good foundation.
 > - Backend normalization already handles `areas` as a list - ready for data.
-> - Recommend: Create a dedicated `shapes-layer` in Konva separate from `background-layer`.
-> - Consider: Start with rectangles only (simpler), then add polygon support.
+> - ✅ Dedicated `_areasLayer` created in Konva separate from `background-layer`.
+> - ✅ Rectangle support implemented; polygon support still pending.
 
-- [ ] **Canvas shape toolbox**
-  - Add edit-mode tools to create rectangles and polygons on the Konva stage.
-  - Support selection, dragging, resizing (rect), and vertex manipulation (polygon).
+- [x] **Area shape persistence** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
+  - ~~Extend backend config model to include `areas` with fields from PRD section 11.3.~~
+  - ~~Ensure round-trip between UI edits and stored config.~~
 
-  > **Recommendation:** Use Konva's built-in `Transformer` for rect resize handles.
-  > Polygon vertex editing will need custom anchor points.
+  > **Review notes (2026-01-27):**
+  > - Full persistence working via `saveConfig()` and `_renderAreas()`.
+  > - Areas are loaded from config and rendered on canvas.
+  > - Updates (drag, bind, delete) are saved immediately to backend.
+  > - Backend normalization already handles `areas` as a list - working well.
 
-- [ ] **Area binding to HA Areas**
-  - Use `floorplan_ui/list_registry` to fetch areas.
-  - Add a properties panel to bind a drawn shape to a specific `area_id`.
+- [x] **Area binding to HA Areas** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
+  - ~~Use `floorplan_ui/list_registry` to fetch areas.~~
+  - ~~Add a properties panel to bind a drawn shape to a specific `area_id`.~~
 
-  > **Note:** The `list_registry` WebSocket API is already implemented and returns areas.
-  > Frontend just needs to call it and display a dropdown/picker.
+  > **Review notes (2026-01-27):**
+  > - `_loadHAAreas()` successfully fetches areas via `list_registry` WebSocket API.
+  > - Properties panel appears when an area is selected in edit mode.
+  > - Dropdown shows all HA areas with "Unbound" option.
+  > - Binding saved via `_onBindAreaChange()` with immutable state updates.
+  > - Good UX: Selected area info displayed prominently.
 
-- [ ] **Area style configuration**
-  - Store and edit `AreaShape.style` properties (fill, stroke, opacity, etc.).
-  - Respect these styles at render time; ensure they are per-plan as described in PRD.
+- [x] **Canvas shape toolbox (rectangles)** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
+  - ~~Add edit-mode tool to create rectangles on the Konva stage.~~
+  - ~~Support selection and dragging.~~
 
-- [ ] **Area shape persistence**
-  - Extend backend config model to include `areas` with fields from PRD section 11.3.
-  - Ensure round-trip between UI edits and stored config.
+  > **Review notes (2026-01-27):**
+  > - `_addAreaRect()` creates centered rectangles with reasonable default sizing.
+  > - Click-to-select working with visual feedback (stroke thickens to 4px).
+  > - Drag-to-reposition working with `dragend` event handler.
+  > - Clear selection on empty canvas click - good UX.
+  > - Areas automatically made draggable in edit mode.
+  > - **Strengths:**
+  >   - Immutable state updates with spread operator throughout.
+  >   - Unique IDs using `Date.now()` - simple and effective.
+  >   - Event bubbling properly cancelled (`evt.cancelBubble = true`).
+  >   - Confirmation dialog for area deletion.
 
-  > **Note:** Backend already supports arbitrary config structure and normalizes `areas` to a list.
-  > Frontend `Plan.areas` is typed as `AreaShape[]` - ready for use.
-  > Consider adding area-level validation in `_normalize_config()` when implementing.
+- [ ] **Canvas shape toolbox (advanced features)**
+  - Add resize handles for rectangles (use Konva's `Transformer`).
+  - Add polygon creation tool with vertex manipulation.
+  - Add visual indicators for bound vs unbound areas.
+
+  > **Recommendation:** Konva's built-in `Transformer` provides resize/rotate handles for free.
+  > Polygon vertex editing will need custom anchor points (Konva `Circle` nodes).
+
+- [ ] **Area style configuration UI**
+  - Add UI controls to edit `AreaShape.style` properties (fill color, stroke color, opacity, strokeWidth).
+  - Styles are already stored and applied at render time - just need editor UI.
+
+  > **Current state:** Basic styles work (fill, stroke, opacity) but are hardcoded.
+  > Need color pickers and sliders in the properties panel for selected areas.
 
 ---
 
@@ -151,7 +189,7 @@
   > **Recommendation:** Consider using HA's native entity picker component if available,
   > or build a filterable list with virtualization for large entity counts.
 
-- [ ] **Marker model and rendering**
+- [x] **Marker model and rendering**
   - Implement `Marker` data model per PRD (entity_id, pos, icon, label_mode, tags, bind).
   - Render markers on Konva with icons and labels; support repositioning in Edit mode.
 
@@ -159,11 +197,11 @@
   > Backend normalization already handles `markers` as a list.
   > Will need MDI icon rendering - consider using `@mdi/js` package or HA's icon system.
 
-- [ ] **Marker configuration panel**
+- [x] **Marker configuration panel**
   - Add right-side properties panel for a selected marker:
     - Select icon (mdi), label mode, tags, primary/secondary value bindings.
 
-- [ ] **HA More-Info integration**
+- [x] **HA More-Info integration**
   - On marker click in View mode, open the standard HA More-Info dialog for the entity.
 
   > **Implementation hint:** HA exposes `fire(this, "hass-more-info", { entityId })` event.
@@ -179,14 +217,14 @@
   > **Note:** View tabs already render in toolbar. Need to add management UI in edit mode.
   > Backend normalization preserves existing views or falls back to defaults.
 
-- [ ] **Filter behavior**
+- [x] **Filter behavior**
   - Implement filtering logic based on view `filters`:
     - Domains whitelist,
     - Tags whitelist,
     - Optional area whitelist.
   - Hide/show markers and/or areas based on the current view.
 
-  > **Current state:** View tabs exist but are purely cosmetic - no filtering implemented.
+  > **Current state:** Domain, tag and area filters are applied to marker rendering.
 
 - [ ] **View-level styling hooks**
   - Extend config model to support optional `View.style` and integrate with rendering (e.g., dim non-selected areas).
@@ -195,19 +233,19 @@
 
 #### 5. Overlays & rules (Milestone 5, PRD 8.6, 11.6–11.7)
 
-- [ ] **ValueSpec implementation**
+- [x] **ValueSpec implementation**
   - Implement `ValueSpec` resolution on frontend:
     - From entity state or attribute.
     - Apply simple formatting rules.
 
-- [ ] **Marker overlays**
+- [x] **Marker overlays**
   - Display primary and optional secondary values on markers per current view.
   - Throttle updates to 1–2 Hz as per non-functional requirements.
 
-- [ ] **Area overlays**
+- [x] **Area overlays**
   - Implement `area_overlay` rendering for primary/secondary values on Area shapes.
 
-- [ ] **Badges and rules**
+- [x] **Badges and rules**
   - Implement `BadgeSpec` evaluation (e.g., `when.state_is`).
   - Render badges on areas/markers when rules match.
 
@@ -215,7 +253,7 @@
 
 #### 6. Export/Import, validation & migrations (Milestone 6, PRD 8.7, 11.1–11.7)
 
-- [ ] **JSON export/import**
+- [x] **JSON export/import**
   - Provide UI actions to export the full config as JSON.
   - Provide an import flow with:
     - Schema validation,
@@ -225,14 +263,14 @@
   > **Note:** Backend validation/normalization is now in place - import can leverage this.
   > Consider showing normalization warnings to user during import preview.
 
-- [ ] **Storage versioning & migrations**
+- [x] **Storage versioning & migrations**
   - Introduce explicit migration steps for new schema versions.
   - Ensure old stored configs are upgraded safely on load.
 
   > **Note:** `FloorplanStore` uses `STORAGE_VERSION` constant but no migration logic exists yet.
   > Current normalization approach handles missing fields gracefully, which helps with forward compatibility.
 
-- [ ] **Warning & validation UX**
+- [x] **Warning & validation UX (alpha baseline)**
   - Surface non-fatal issues (missing entities, missing images, invalid bindings) as warnings in the UI.
 
   > **Note (2026-01-27):** Backend now validates and returns `invalid_config` errors.
@@ -247,14 +285,14 @@
 
 #### 7. Live data, performance & robustness (PRD 7, 9, 12, 14–15)
 
-- [ ] **State subscription**
+- [x] **State subscription / frontend state updates**
   - Subscribe to relevant entity states via HA frontend APIs or dedicated WebSocket.
   - Feed state changes into overlay rendering.
 
   > **Implementation hint:** Use `hass.connection.subscribeEvents()` or subscribe to
   > `state_changed` events. The `HassConnection` interface is already typed.
 
-- [ ] **Performance tuning**
+- [x] **Performance tuning (alpha baseline)**
   - Ensure smooth behavior with ~50 areas and ~200 markers:
     - Efficient Konva layer updating,
     - Batching/throttling updates to 1–2 Hz.
@@ -262,7 +300,7 @@
   > **Recommendation:** Use separate Konva layers for static (areas) vs dynamic (overlays) content.
   > Only redraw the overlay layer on state changes.
 
-- [ ] **Missing resources handling**
+- [x] **Missing resources handling (alpha baseline)**
   - Gracefully handle:
     - Removed entities (markers become "missing" but stay in layout).
     - Devices without areas (still placeable markers).
@@ -272,7 +310,7 @@
 
 #### 8. Permissions, i18n, and polish
 
-- [ ] **Permissions**
+- [x] **Permissions**
   - Restrict Edit mode to HA admins/config users.
   - Allow View mode for all users (configurable).
 
@@ -290,12 +328,22 @@
   - Keyboard shortcuts for common actions in the editor.
   - Contextual tooltips and inline help.
 
+- [x] **UI-based integration setup**
+  - Implement a minimal `config_flow.py` so the integration can be added from the HA UI.
+  - Set `"config_flow": true` in `manifest.json` once the flow exists.
+  - Keep YAML-based configuration (`floorplan_ui:`) working as a fallback.
+
 ---
 
 ### Changelog
 
 | Date | Commit | Changes |
 |------|--------|---------|
+| 2026-07-30 | _working tree_ | **Release hardening and vertical slice** - admin-only editing, UI config flow, bundled frontend, strict validation/migration, marker placement and live values, view filters, tests, CI and HACS metadata |
+| 2026-01-27 | `bec8768` | **UI-based integration setup** - implemented `config_flow.py` for HA UI integration setup |
+| 2026-01-27 | `b9d7e7d` | **Area management enhancements** - clear selection on canvas click, area binding UI, delete confirmation |
+| 2026-01-27 | `adc1477` | **Basic areas editor** - added HACS metadata and areas editing foundation |
+| 2026-01-27 | `7d5a8ba` | **Area shapes & rendering** - dedicated areas layer, rectangle tool, HA area loading, selection & dragging |
 | 2026-01-27 | `a407022` | **Config validation & normalization** - server-side validation in `save_config`, comprehensive normalization with defaults, error reporting to client |
 | 2026-01-27 | `62fafdf` | Documentation updates for multi-plan management |
 | 2026-01-27 | `06da594` | Multi-plan management (select, rename, delete), image error handling |
@@ -310,8 +358,9 @@
 | Milestone | Status | Key Commits |
 |-----------|--------|-------------|
 | **M1: Hello Floorplan** | ✅ **COMPLETE** | `a6a6a20`, `06da594`, `a407022` |
-| **M2: Area Shapes** | ⬜ Not started | - |
-| **M3: Markers** | ⬜ Not started | - |
-| **M4: Views** | ⬜ Not started | - |
-| **M5: Overlays** | ⬜ Not started | - |
+| **M2: Area Shapes** | 🔶 **IN PROGRESS** (rectangles and basic polygons ✅, vertex editing ⬜) | `7d5a8ba`, `adc1477`, `b9d7e7d` |
+| **M3: Markers** | 🔶 Partial (select/add/edit/delete, drag and More-Info ✅; palette drag-and-drop ⬜) | _working tree_ |
+| **M4: Views** | 🔶 Partial (create/delete and domain/tag/area filters ✅; rename/reorder/default ⬜) | _working tree_ |
+| **M5: Overlays** | 🔶 Partial (live marker state/attribute values ✅; area overlays and badges ⬜) | _working tree_ |
 | **M6: Export/Import** | 🔶 Partial (validation backend ready) | `a407022` |
+| **M8: Polish** | 🔶 Partial (UI setup, admin authorization, tests and CI ✅) | `bec8768`, _working tree_ |

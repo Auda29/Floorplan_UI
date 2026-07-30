@@ -71,6 +71,7 @@ export interface HassEntityRegistry {
 
 export interface FloorplanConfig {
   version: number;
+  default_view?: string;
   plans: Plan[];
   views: View[];
 }
@@ -115,6 +116,7 @@ export interface AreaShape {
 export interface Marker {
   id: string;
   entity_id: string;
+  area_id?: string | null;
   pos: { x: number; y: number };
   icon: string;
   label_mode: "off" | "short" | "full" | "auto";

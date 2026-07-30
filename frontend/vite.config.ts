@@ -9,9 +9,9 @@ export default defineConfig({
       fileName: () => "floorplan-ui.js",
       formats: ["es"],
     },
-    outDir: "dist",
+    outDir: "../custom_components/floorplan_ui/frontend",
     emptyOutDir: true,
-    sourcemap: true,
+    sourcemap: false,
   },
   resolve: {
     alias: {

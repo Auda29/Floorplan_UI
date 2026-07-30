@@ -45,6 +45,3 @@ __pycache__/
 *$py.class
 .Python
 *.so
-
-# pnpm
-pnpm-lock.yaml
