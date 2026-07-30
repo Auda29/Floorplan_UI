@@ -94,3 +94,7 @@ an administrator connection. Embedded image uploads are limited to PNG/JPEG and
 
 Report security or functional issues through the repository's
 [issue tracker](https://github.com/Auda29/Floorplan_UI/issues).
+
+## License
+
+Floorplan UI is available under the [MIT License](LICENSE).

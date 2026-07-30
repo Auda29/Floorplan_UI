@@ -34,7 +34,7 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_frontend_bundle_and_hacs_brand_are_committed(self) -> None:
         bundle = ROOT / "custom_components/floorplan_ui/frontend/floorplan-ui.js"
-        icon = ROOT / "brand/icon.png"
+        icon = ROOT / "custom_components/floorplan_ui/brand/icon.png"
 
         self.assertGreater(bundle.stat().st_size, 100_000)
         self.assertGreater(icon.stat().st_size, 1_000)
