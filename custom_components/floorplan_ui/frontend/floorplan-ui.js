@@ -9040,7 +9040,7 @@ const sc = 4e6, ac = 2e7, oc = 500, Wn = class Wn extends Oe {
     const t = new Blob([JSON.stringify(this._config, null, 2)], {
       type: "application/json"
     }), e = URL.createObjectURL(t), i = document.createElement("a");
-    i.href = e, i.download = "floorplan-ui-0.1.0.json", i.click(), URL.revokeObjectURL(e), this._setNotice("Configuration exported.");
+    i.href = e, i.download = "floorplan-ui-0.1.1.json", i.click(), URL.revokeObjectURL(e), this._setNotice("Configuration exported.");
   }
   _triggerConfigImport() {
     var t;

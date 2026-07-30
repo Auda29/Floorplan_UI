@@ -1713,7 +1713,7 @@ export class FloorplanPanel extends LitElement {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "floorplan-ui-0.1.0.json";
+    link.download = "floorplan-ui-0.1.1.json";
     link.click();
     URL.revokeObjectURL(url);
     this._setNotice("Configuration exported.");

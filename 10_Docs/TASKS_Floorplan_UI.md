@@ -99,10 +99,10 @@
   >   - Type coercion with sensible defaults (e.g., width=800, height=600 for missing dimensions)
   >   - Proper error propagation to WebSocket client via `connection.send_error()`
   >   - Logging at WARNING level for recoverable issues
-  > - **Potential improvements (non-blocking):**
-  >   - Consider adding validation for individual area/marker objects when those features are implemented
-  >   - Could add a `floorplan_ui/validate` WebSocket command for dry-run validation
-  >   - Frontend doesn't yet display validation errors to the user (see M6 Warning UX task)
+  > - **Resolved by `v0.1.0`:**
+  >   - Area and marker objects receive field-level validation.
+  >   - `floorplan_ui/validate_config` provides admin-only dry-run validation.
+  >   - The frontend displays save and import validation errors inline.
 
 - [x] **Resilience to missing/invalid images** ✅ _Completed in commit `06da594` (2026-01-27)_
   - ~~Handle broken `background.url` (404, missing data).~~
@@ -116,14 +116,11 @@
 
 ---
 
-#### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3) 🔶 IN PROGRESS
+#### 2. Area shapes & Area binding (Milestone 2, PRD 8.3, 11.3) ✅ ALPHA BASELINE COMPLETE
 
-> **Review notes (2026-01-27):**
-> - This is the logical next milestone now that M1 is complete.
-> - TypeScript types for `AreaShape` already exist in `home-assistant.ts` - good foundation.
-> - Backend normalization already handles `areas` as a list - ready for data.
-> - ✅ Dedicated `_areasLayer` created in Konva separate from `background-layer`.
-> - ✅ Rectangle support implemented; polygon support still pending.
+> **Completion note (2026-07-30):** Rectangle and polygon creation, rectangle
+> resizing, polygon vertex editing, HA Area binding, tags, and style controls are
+> implemented for the alpha scope.
 
 - [x] **Area shape persistence** ✅ _Completed in commits `7d5a8ba`, `b9d7e7d` (2026-01-27)_
   - ~~Extend backend config model to include `areas` with fields from PRD section 11.3.~~
@@ -162,60 +159,60 @@
   >   - Event bubbling properly cancelled (`evt.cancelBubble = true`).
   >   - Confirmation dialog for area deletion.
 
-- [ ] **Canvas shape toolbox (advanced features)**
-  - Add resize handles for rectangles (use Konva's `Transformer`).
-  - Add polygon creation tool with vertex manipulation.
-  - Add visual indicators for bound vs unbound areas.
+- [x] **Canvas shape toolbox (advanced features)**
+  - Rectangle resize handles use Konva's `Transformer`.
+  - Polygon creation and draggable vertex anchors are implemented.
+  - Bound areas display their Home Assistant Area name on the canvas.
 
-  > **Recommendation:** Konva's built-in `Transformer` provides resize/rotate handles for free.
-  > Polygon vertex editing will need custom anchor points (Konva `Circle` nodes).
+  > **Current state:** Selected rectangles expose resize handles and selected polygons
+  > expose draggable `Konva.Circle` vertex anchors.
 
-- [ ] **Area style configuration UI**
-  - Add UI controls to edit `AreaShape.style` properties (fill color, stroke color, opacity, strokeWidth).
-  - Styles are already stored and applied at render time - just need editor UI.
+- [x] **Area style configuration UI**
+  - UI controls edit `AreaShape.style` fill color, stroke color, opacity, and stroke width.
+  - Style changes are persisted and applied at render time.
 
-  > **Current state:** Basic styles work (fill, stroke, opacity) but are hardcoded.
-  > Need color pickers and sliders in the properties panel for selected areas.
+  > **Current state:** Fill, stroke, opacity, and stroke-width controls are available
+  > in the selected-area properties panel.
 
 ---
 
-#### 3. Marker placement & entity mapping (Milestone 3, PRD 8.4, 11.4)
+#### 3. Marker placement & entity mapping (Milestone 3, PRD 8.4, 11.4) ✅ ALPHA BASELINE COMPLETE
 
-- [ ] **Entity palette / explorer**
-  - Build a left-side palette using `floorplan_ui/list_registry` results:
+- [x] **Entity palette / explorer**
+  - The palette uses `floorplan_ui/list_registry` results:
     - Areas, devices, and entities with filters (domain, area, text search).
-  - Support drag-and-drop of entities from the palette onto the canvas.
+  - Entities can be added through the selector or dragged from the palette onto the canvas.
 
-  > **Recommendation:** Consider using HA's native entity picker component if available,
-  > or build a filterable list with virtualization for large entity counts.
+  > **Current state:** The custom searchable palette renders up to 80 filtered results;
+  > virtualization or a native HA picker remains a future scalability enhancement.
 
 - [x] **Marker model and rendering**
-  - Implement `Marker` data model per PRD (entity_id, pos, icon, label_mode, tags, bind).
-  - Render markers on Konva with icons and labels; support repositioning in Edit mode.
+  - `Marker` data follows the PRD model (`entity_id`, position, icon, label mode, tags, binding).
+  - Konva renders markers with domain glyphs, labels, and live values; Edit mode supports repositioning.
 
-  > **Note:** TypeScript `Marker` interface already defined in `home-assistant.ts`.
-  > Backend normalization already handles `markers` as a list.
-  > Will need MDI icon rendering - consider using `@mdi/js` package or HA's icon system.
+  > **Current state:** The integration stores icon identifiers but renders compact
+  > domain glyphs. Rendering arbitrary MDI icons remains post-alpha work.
 
 - [x] **Marker configuration panel**
-  - Add right-side properties panel for a selected marker:
-    - Select icon (mdi), label mode, tags, primary/secondary value bindings.
+  - The selected-marker panel configures HA Area binding, label mode, tags, and
+    primary/secondary value bindings.
 
 - [x] **HA More-Info integration**
   - On marker click in View mode, open the standard HA More-Info dialog for the entity.
 
-  > **Implementation hint:** HA exposes `fire(this, "hass-more-info", { entityId })` event.
+  > **Current state:** View-mode marker clicks dispatch the composed
+  > `hass-more-info` event with the marker's entity ID.
 
 ---
 
-#### 4. Views / Pages (Milestone 4, PRD 8.5, 11.5)
+#### 4. Views / Pages (Milestone 4, PRD 8.5, 11.5) ✅ ALPHA BASELINE COMPLETE
 
-- [ ] **View management UI**
+- [x] **View management UI**
   - Implement CRUD for views (create, rename, delete, reorder).
   - Allow choosing a default view.
 
-  > **Note:** View tabs already render in toolbar. Need to add management UI in edit mode.
-  > Backend normalization preserves existing views or falls back to defaults.
+  > **Current state:** Edit mode supports create, rename, reorder, default selection,
+  > and deletion. Backend normalization preserves existing views or falls back to defaults.
 
 - [x] **Filter behavior**
   - Implement filtering logic based on view `filters`:
@@ -231,7 +228,7 @@
 
 ---
 
-#### 5. Overlays & rules (Milestone 5, PRD 8.6, 11.6–11.7)
+#### 5. Overlays & rules (Milestone 5, PRD 8.6, 11.6–11.7) ✅ ALPHA BASELINE COMPLETE
 
 - [x] **ValueSpec implementation**
   - Implement `ValueSpec` resolution on frontend:
@@ -251,7 +248,7 @@
 
 ---
 
-#### 6. Export/Import, validation & migrations (Milestone 6, PRD 8.7, 11.1–11.7)
+#### 6. Export/Import, validation & migrations (Milestone 6, PRD 8.7, 11.1–11.7) ✅ ALPHA BASELINE COMPLETE
 
 - [x] **JSON export/import**
   - Provide UI actions to export the full config as JSON.
@@ -260,26 +257,29 @@
     - Version checks,
     - Preview/confirmation UI.
 
-  > **Note:** Backend validation/normalization is now in place - import can leverage this.
-  > Consider showing normalization warnings to user during import preview.
+  > **Current state:** Import uses the admin-only validation endpoint, shows a preview
+  > and confirmation, and surfaces validation failures without saving invalid data.
 
 - [x] **Storage versioning & migrations**
   - Introduce explicit migration steps for new schema versions.
   - Ensure old stored configs are upgraded safely on load.
 
-  > **Note:** `FloorplanStore` uses `STORAGE_VERSION` constant but no migration logic exists yet.
-  > Current normalization approach handles missing fields gracefully, which helps with forward compatibility.
+  > **Current state:** `FloorplanStore` explicitly migrates schema version 1 to version 2,
+  > validates the migrated result, and rejects unsupported future versions.
 
 - [x] **Warning & validation UX (alpha baseline)**
   - Surface non-fatal issues (missing entities, missing images, invalid bindings) as warnings in the UI.
 
-  > **Note (2026-01-27):** Backend now validates and returns `invalid_config` errors.
-  > Frontend needs to catch these errors and display user-friendly messages.
-  > Consider a toast/snackbar notification system for transient warnings.
+  > **Current state:** The frontend surfaces save and import validation errors inline.
+  > A consolidated warning center remains post-alpha work.
 
-- [ ] **Release & versioning hygiene (HACS compatibility)**
-  - Create a GitHub release (e.g. tag `v0.1.0`) pointing at the current stable commit.
-  - Keep `manifest.json`'s `"version": "0.1.0"` in sync with that tag for future releases.
+- [x] **Release & versioning hygiene (HACS compatibility)**
+  - Public GitHub release history starts with `v0.1.0`; documentation maintenance
+    is released as `v0.1.1`.
+  - `manifest.json`, `const.py`, and `frontend/package.json` are synchronized at `0.1.1`.
+  - HACS and Hassfest validation are required for every release commit.
+  - Public release history is maintained in the repository-root `CHANGELOG.md` and
+    user-facing release notes are published with each matching GitHub release.
 
 ---
 
@@ -335,11 +335,15 @@
 
 ---
 
-### Changelog
+### Development history
+
+The canonical user-facing release history lives in [`../CHANGELOG.md`](../CHANGELOG.md).
+This table retains the earlier implementation-level commit history.
 
 | Date | Commit | Changes |
 |------|--------|---------|
-| 2026-07-30 | _working tree_ | **Release hardening and vertical slice** - admin-only editing, UI config flow, bundled frontend, strict validation/migration, marker placement and live values, view filters, tests, CI and HACS metadata |
+| 2026-07-30 | `v0.1.1` | **Documentation and release metadata** - public changelog, HACS release policy, current implementation status, and synchronized `0.1.1` version labels |
+| 2026-07-30 | `5012ea1` (`v0.1.0`) | **First public HACS alpha** - admin-only editing, UI config flow, bundled frontend, strict validation/migration, marker placement and live values, view filters, tests, CI and HACS metadata |
 | 2026-01-27 | `bec8768` | **UI-based integration setup** - implemented `config_flow.py` for HA UI integration setup |
 | 2026-01-27 | `b9d7e7d` | **Area management enhancements** - clear selection on canvas click, area binding UI, delete confirmation |
 | 2026-01-27 | `adc1477` | **Basic areas editor** - added HACS metadata and areas editing foundation |
@@ -358,9 +362,9 @@
 | Milestone | Status | Key Commits |
 |-----------|--------|-------------|
 | **M1: Hello Floorplan** | ✅ **COMPLETE** | `a6a6a20`, `06da594`, `a407022` |
-| **M2: Area Shapes** | 🔶 **IN PROGRESS** (rectangles and basic polygons ✅, vertex editing ⬜) | `7d5a8ba`, `adc1477`, `b9d7e7d` |
-| **M3: Markers** | 🔶 Partial (select/add/edit/delete, drag and More-Info ✅; palette drag-and-drop ⬜) | _working tree_ |
-| **M4: Views** | 🔶 Partial (create/delete and domain/tag/area filters ✅; rename/reorder/default ⬜) | _working tree_ |
-| **M5: Overlays** | 🔶 Partial (live marker state/attribute values ✅; area overlays and badges ⬜) | _working tree_ |
-| **M6: Export/Import** | 🔶 Partial (validation backend ready) | `a407022` |
-| **M8: Polish** | 🔶 Partial (UI setup, admin authorization, tests and CI ✅) | `bec8768`, _working tree_ |
+| **M2: Area Shapes** | ✅ **ALPHA BASELINE COMPLETE** (rectangles, polygons, resize, vertex editing, binding and styles) | `7d5a8ba`, `adc1477`, `b9d7e7d`, `5012ea1` |
+| **M3: Markers** | ✅ **ALPHA BASELINE COMPLETE** (palette, drag-and-drop, editing, live values and More-Info; arbitrary MDI rendering remains) | `5012ea1` |
+| **M4: Views** | ✅ **ALPHA BASELINE COMPLETE** (CRUD, reorder, default and filters; view styling remains) | `5012ea1` |
+| **M5: Overlays** | ✅ **ALPHA BASELINE COMPLETE** (marker values, area overlays and conditional badges) | `5012ea1` |
+| **M6: Export/Import** | ✅ **ALPHA BASELINE COMPLETE** (export, pre-flight validation, preview, import and migrations) | `a407022`, `5012ea1` |
+| **M8: Polish** | 🔶 Partial (UI setup, authorization, tests and CI ✅; i18n, undo/redo and broader UX polish remain) | `bec8768`, `5012ea1` |

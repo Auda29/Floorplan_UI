@@ -4,8 +4,9 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** first testable alpha (`0.1.0`). Back up your Home Assistant configuration
-> before testing it with production data.
+> **Status:** public alpha (current release: `0.1.1`). It is intentionally available
+> as a regular release to custom HACS repository users. Back up your Home Assistant
+> configuration before testing it with production data.
 
 ## Current capabilities
 
@@ -28,7 +29,7 @@ sidebar panel with separate view and admin-only edit modes.
 - Keep view mode available to users while restricting all editor writes and
   registry access to Home Assistant administrators.
 
-The `0.1.0` scope is intentionally an alpha: undo/redo, localization, touch-first
+The `0.1.x` scope is intentionally an alpha: undo/redo, localization, touch-first
 editor polish, aggregate area calculations, and a dedicated warning center remain
 planned work. Missing or unavailable entities remain visible with an unavailable
 value and neutral marker color.
@@ -76,14 +77,28 @@ python -m unittest discover -s tests
 python -m compileall -q custom_components/floorplan_ui
 ```
 
+## Releases and changelog
+
+The complete user-facing release history is maintained in
+[`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
+from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
+The current public release is [`v0.1.1`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.1.1).
+
+Versions below `1.0.0` represent initial development and may contain breaking
+changes. Public `0.x` releases are offered through the normal HACS channel;
+experimental builds that should require HACS beta visibility use a semantic
+prerelease version such as `0.2.0-beta.1` and are marked as GitHub prereleases.
+
 ## Release checklist
 
-1. Run all frontend and backend checks.
-2. Build and commit the generated frontend bundle.
-3. Keep the versions in `frontend/package.json`, `manifest.json`, and
+1. Add the user-facing changes to `CHANGELOG.md`.
+2. Run all frontend and backend checks.
+3. Build and commit the generated frontend bundle.
+4. Keep the versions in `frontend/package.json`, `manifest.json`, and
    `const.py` synchronized.
-4. Confirm HACS and Hassfest validation in GitHub Actions.
-5. Create a matching GitHub release and semantic version tag.
+5. Confirm HACS and Hassfest validation in GitHub Actions.
+6. Create a matching GitHub release and semantic version tag, and copy the
+   relevant changelog entry into the GitHub release notes for HACS users.
 
 ## Architecture
 
