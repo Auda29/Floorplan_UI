@@ -12,7 +12,20 @@ import type {
   Plan,
   AreaShape,
   HassArea,
+  HassEntityRegistry,
+  Marker,
+  View,
 } from "../types/home-assistant";
+import {
+  defaultTagsForEntity,
+  getDomainGlyph,
+  getMarkerLabel,
+  getMarkerColor,
+  getMarkerValue,
+  markerMatchesView,
+} from "../lib/marker-utils";
+
+const MAX_IMAGE_FILE_BYTES = 4_000_000;
 
 export class FloorplanPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -25,13 +38,27 @@ export class FloorplanPanel extends LitElement {
   @state() private _currentView = "all";
   @state() private _currentPlanId: string | null = null;
   @state() private _selectedAreaId: string | null = null;
+  @state() private _selectedMarkerId: string | null = null;
   @state() private _haAreas: HassArea[] = [];
+  @state() private _haEntities: HassEntityRegistry[] = [];
+  @state() private _entityToAdd = "";
+  @state() private _entitySearch = "";
+  @state() private _notice = "";
+  @state() private _error = "";
 
   private _stage: Konva.Stage | null = null;
   private _backgroundLayer: Konva.Layer | null = null;
   private _resizeObserver: ResizeObserver | null = null;
   private _areasLayer: Konva.Layer | null = null;
-  private _areaRects: Map<string, Konva.Rect> = new Map();
+  private _markersLayer: Konva.Layer | null = null;
+  private _areaShapes: Map<string, Konva.Shape> = new Map();
+  private _markerGroups: Map<string, Konva.Group> = new Map();
+  private _renderGeneration = 0;
+  private _initializeTimer: number | null = null;
+
+  private get _canEdit(): boolean {
+    return this.hass?.user?.is_admin === true;
+  }
 
   static styles = css`
     :host {
@@ -216,16 +243,66 @@ export class FloorplanPanel extends LitElement {
     .edit-toolbar button:hover {
       background: #f0f0f0;
     }
+
+    .edit-toolbar input,
+    .edit-toolbar select {
+      min-width: 140px;
+      padding: 6px 8px;
+      border: 1px solid #bbb;
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .edit-toolbar .grow {
+      flex: 1;
+      min-width: 180px;
+    }
+
+    .status {
+      padding: 6px 16px;
+      background: #e8f5e9;
+      color: #1b5e20;
+      font-size: 13px;
+    }
+
+    .status.error {
+      background: #ffebee;
+      color: #b71c1c;
+    }
+
+    .viewer-note {
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    @media (max-width: 900px) {
+      .toolbar,
+      .toolbar-left,
+      .edit-toolbar {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .view-tabs {
+        flex-wrap: wrap;
+      }
+    }
   `;
 
   async connectedCallback() {
     super.connectedCallback();
     await this._loadConfig();
-    this._loadHAAreas();
+    if (this._canEdit) {
+      await this._loadRegistry();
+    }
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    if (this._initializeTimer !== null) {
+      window.clearTimeout(this._initializeTimer);
+      this._initializeTimer = null;
+    }
     this._destroyStage();
   }
 
@@ -241,20 +318,22 @@ export class FloorplanPanel extends LitElement {
     } catch (err) {
       console.error("Failed to load floorplan config:", err);
       this._config = { version: 1, plans: [], views: [] };
+      this._setError("Floorplan configuration could not be loaded.");
     }
     this._loading = false;
   }
 
   public async saveConfig() {
-    if (!this._config) return;
+    if (!this._config || !this._canEdit) return;
     try {
       await this.hass.callWS({
         type: "floorplan_ui/save_config",
         config: this._config,
       });
-      console.info("Floorplan config saved");
+      this._setNotice("Changes saved.");
     } catch (err) {
       console.error("Failed to save floorplan config:", err);
+      this._setError("Changes could not be saved.");
     }
   }
 
@@ -263,12 +342,41 @@ export class FloorplanPanel extends LitElement {
     if (changedProps.has("_loading") && !this._loading && !this._stage) {
       await this.updateComplete;
       // Small delay to ensure DOM is ready
-      setTimeout(() => this._initializeStage(), 100);
+      this._initializeTimer = window.setTimeout(() => {
+        this._initializeTimer = null;
+        this._initializeStage();
+      }, 100);
     }
 
     if (changedProps.has("_currentPlanId") && this._stage) {
+      this._selectedAreaId = null;
+      this._selectedMarkerId = null;
       this._renderFloorplan();
     }
+
+    if (changedProps.has("_currentView") && this._stage) {
+      this._renderMarkers(this._getCurrentPlan());
+    }
+
+    if (changedProps.has("hass")) {
+      if (!this._canEdit && this._editMode) {
+        this._editMode = false;
+        this._selectedAreaId = null;
+        this._selectedMarkerId = null;
+        this._syncCanvasInteractivity();
+      }
+      this._refreshMarkerLiveValues();
+    }
+  }
+
+  private _setNotice(message: string) {
+    this._error = "";
+    this._notice = message;
+  }
+
+  private _setError(message: string) {
+    this._notice = "";
+    this._error = message;
   }
 
   private _initializeStage() {
@@ -297,16 +405,17 @@ export class FloorplanPanel extends LitElement {
     this._areasLayer = new Konva.Layer();
     this._stage.add(this._areasLayer);
 
+    this._markersLayer = new Konva.Layer();
+    this._stage.add(this._markersLayer);
+
     // Clear selection when clicking on empty canvas in edit mode
     this._stage.on("click", (e) => {
       if (!this._editMode) return;
       // Ignore clicks on shapes (they handle their own selection)
       if (e.target === this._stage) {
         this._selectedAreaId = null;
-        for (const rect of this._areaRects.values()) {
-          rect.strokeWidth(2);
-        }
-        this._areasLayer?.draw();
+        this._selectedMarkerId = null;
+        this._syncCanvasInteractivity();
       }
     });
 
@@ -322,9 +431,12 @@ export class FloorplanPanel extends LitElement {
         y: (pointer.y - this._stage!.y()) / oldScale,
       };
 
+      const currentPlan = this._getCurrentPlan();
+      const minZoom = currentPlan?.view.minZoom ?? 0.1;
+      const maxZoom = currentPlan?.view.maxZoom ?? 5;
       const direction = e.evt.deltaY > 0 ? -1 : 1;
       const newScale = direction > 0 ? oldScale * 1.1 : oldScale / 1.1;
-      const clampedScale = Math.max(0.1, Math.min(5, newScale));
+      const clampedScale = Math.max(minZoom, Math.min(maxZoom, newScale));
 
       this._stage!.scale({ x: clampedScale, y: clampedScale });
       this._stage!.position({
@@ -349,11 +461,15 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _destroyStage() {
+    this._renderGeneration += 1;
     this._resizeObserver?.disconnect();
     this._stage?.destroy();
     this._stage = null;
+    this._backgroundLayer = null;
     this._areasLayer = null;
-    this._areaRects.clear();
+    this._markersLayer = null;
+    this._areaShapes.clear();
+    this._markerGroups.clear();
   }
 
   private _getCurrentPlan(): Plan | null {
@@ -372,9 +488,13 @@ export class FloorplanPanel extends LitElement {
   private _renderFloorplan() {
     if (!this._stage || !this._backgroundLayer) return;
 
+    const generation = ++this._renderGeneration;
+
     this._backgroundLayer.destroyChildren();
     this._areasLayer?.destroyChildren();
-    this._areaRects.clear();
+    this._markersLayer?.destroyChildren();
+    this._areaShapes.clear();
+    this._markerGroups.clear();
 
     const plan = this._getCurrentPlan();
     const stageWidth = this._stage.width();
@@ -383,9 +503,15 @@ export class FloorplanPanel extends LitElement {
     if (!plan) {
       this._drawEmptyState(stageWidth, stageHeight);
     } else if (plan.background?.url) {
+      this._renderAreas(plan);
+      this._renderMarkers(plan);
+
       // Load background image
       const imageObj = new Image();
       imageObj.onload = () => {
+        if (generation !== this._renderGeneration || plan.plan_id !== this._currentPlanId) {
+          return;
+        }
         const img = new Konva.Image({
           x: 0,
           y: 0,
@@ -395,9 +521,8 @@ export class FloorplanPanel extends LitElement {
         });
         this._backgroundLayer!.add(img);
         try {
-          this._backgroundLayer!.draw();
-          this._fitToScreen(imageObj.width, imageObj.height);
-          this._renderAreas(plan);
+          this._backgroundLayer!.batchDraw();
+          this._fitToScreen(img.width(), img.height());
         } catch (err) {
           console.error("Error rendering floorplan image:", err);
           this._backgroundLayer!.destroyChildren();
@@ -405,19 +530,21 @@ export class FloorplanPanel extends LitElement {
         }
       };
       imageObj.onerror = () => {
+        if (generation !== this._renderGeneration) return;
         console.error("Failed to load floorplan image");
         this._backgroundLayer!.destroyChildren();
         this._drawImageErrorState(stageWidth, stageHeight);
       };
       imageObj.src = plan.background.url;
-      this._renderAreas(plan);
     } else if (plan) {
       // No background image but areas exist
       this._renderAreas(plan);
+      this._renderMarkers(plan);
     }
 
-    this._backgroundLayer.draw();
-    this._areasLayer?.draw();
+    this._backgroundLayer.batchDraw();
+    this._areasLayer?.batchDraw();
+    this._markersLayer?.batchDraw();
   }
 
   private _fitToScreen(imgWidth: number, imgHeight: number) {
@@ -434,11 +561,13 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _toggleEditMode() {
+    if (!this._canEdit) return;
     this._editMode = !this._editMode;
     if (!this._editMode) {
       this._selectedAreaId = null;
+      this._selectedMarkerId = null;
     }
-    this._syncAreaInteractivity();
+    this._syncCanvasInteractivity();
   }
 
   private _selectPlan(e: Event) {
@@ -449,7 +578,7 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _renameCurrentPlan() {
-    if (!this._config || !this._currentPlanId) return;
+    if (!this._canEdit || !this._config || !this._currentPlanId) return;
     const plan = this._config.plans.find((p) => p.plan_id === this._currentPlanId);
     if (!plan) return;
 
@@ -465,11 +594,11 @@ export class FloorplanPanel extends LitElement {
         p.plan_id === this._currentPlanId ? { ...p, name: trimmed } : p
       ),
     };
-    this.saveConfig();
+    void this.saveConfig();
   }
 
   private _deleteCurrentPlan() {
-    if (!this._config || !this._currentPlanId) return;
+    if (!this._canEdit || !this._config || !this._currentPlanId) return;
     if (!window.confirm("Delete current plan? This cannot be undone.")) return;
 
     const remainingPlans = this._config.plans.filter((p) => p.plan_id !== this._currentPlanId);
@@ -485,7 +614,7 @@ export class FloorplanPanel extends LitElement {
       this._currentPlanId = null;
     }
 
-    this.saveConfig();
+    void this.saveConfig();
     this._renderFloorplan();
   }
 
@@ -493,57 +622,91 @@ export class FloorplanPanel extends LitElement {
     if (!this._areasLayer || !plan) return;
 
     this._areasLayer.destroyChildren();
-    this._areaRects.clear();
+    this._areaShapes.clear();
 
     for (const area of plan.areas ?? []) {
       const { shape, style } = area;
-      if (shape.type !== "rect") continue;
+      let areaShape: Konva.Shape;
+      if (shape.type === "polygon" && (shape.points?.length ?? 0) >= 6) {
+        areaShape = new Konva.Line({
+          x: shape.x ?? 0,
+          y: shape.y ?? 0,
+          points: shape.points,
+          closed: true,
+          fill: style.fill ?? "#2196f3",
+          stroke: style.stroke ?? "#1976d2",
+          strokeWidth: style.strokeWidth ?? 2,
+          opacity: style.fillOpacity ?? 0.4,
+          draggable: this._editMode,
+        });
+      } else if (shape.type === "rect") {
+        areaShape = new Konva.Rect({
+          x: shape.x ?? 0,
+          y: shape.y ?? 0,
+          width: shape.width ?? 100,
+          height: shape.height ?? 80,
+          fill: style.fill ?? "#2196f3",
+          stroke: style.stroke ?? "#1976d2",
+          strokeWidth: style.strokeWidth ?? 2,
+          opacity: style.fillOpacity ?? 0.4,
+          draggable: this._editMode,
+        });
+      } else {
+        continue;
+      }
 
-      const rect = new Konva.Rect({
-        x: shape.x ?? 0,
-        y: shape.y ?? 0,
-        width: shape.width ?? 100,
-        height: shape.height ?? 80,
-        fill: style.fill ?? "rgba(33, 150, 243, 0.2)",
-        stroke: style.stroke ?? "#2196f3",
-        strokeWidth: style.strokeWidth ?? 2,
-        opacity: style.fillOpacity ?? 0.4,
-        draggable: this._editMode,
-      });
-
-      rect.on("click", (evt) => {
+      areaShape.on("click", (evt) => {
         evt.cancelBubble = true;
         if (!this._editMode) return;
         this._onAreaSelected(area.id);
       });
 
-      rect.on("dragend", () => {
+      areaShape.on("dragend", () => {
         if (!this._editMode) return;
-        const pos = rect.position();
+        const pos = areaShape.position();
         this._updateAreaShape(area.id, {
           x: pos.x,
           y: pos.y,
-          width: rect.width(),
-          height: rect.height(),
         });
       });
 
-      this._areasLayer.add(rect);
-      this._areaRects.set(area.id, rect);
+      this._areasLayer.add(areaShape);
+      this._areaShapes.set(area.id, areaShape);
+
+      const areaName = this._haAreas.find((entry) => entry.id === area.area_id)?.name;
+      if (area.area_id) {
+        const bounds = areaShape.getClientRect({ skipTransform: false });
+        this._areasLayer.add(
+          new Konva.Text({
+            x: bounds.x + 8,
+            y: bounds.y + 8,
+            text: areaName ?? area.area_id,
+            fontSize: 14,
+            fontStyle: "bold",
+            fill: "#0d47a1",
+            listening: false,
+          })
+        );
+      }
     }
 
-    this._syncAreaInteractivity();
+    this._syncCanvasInteractivity();
   }
 
-  private _syncAreaInteractivity() {
-    if (!this._areasLayer) return;
-
-    for (const [id, rect] of this._areaRects.entries()) {
-      rect.draggable(this._editMode);
-      rect.strokeWidth(this._selectedAreaId === id ? 4 : 2);
+  private _syncCanvasInteractivity() {
+    for (const [id, areaShape] of this._areaShapes.entries()) {
+      areaShape.draggable(this._editMode);
+      areaShape.strokeWidth(this._selectedAreaId === id ? 4 : 2);
     }
 
-    this._areasLayer.draw();
+    for (const [id, markerGroup] of this._markerGroups.entries()) {
+      markerGroup.draggable(this._editMode);
+      const dot = markerGroup.findOne(".marker-dot") as Konva.Circle | undefined;
+      dot?.strokeWidth(this._selectedMarkerId === id ? 4 : 2);
+    }
+
+    this._areasLayer?.batchDraw();
+    this._markersLayer?.batchDraw();
   }
 
   private _drawEmptyState(stageWidth: number, stageHeight: number) {
@@ -621,43 +784,48 @@ export class FloorplanPanel extends LitElement {
 
   private _onAreaSelected(areaId: string) {
     this._selectedAreaId = areaId;
-
-    // Simple visual selection: thicken stroke for selected area
-    for (const [id, rect] of this._areaRects.entries()) {
-      const isSelected = id === areaId;
-      rect.strokeWidth(isSelected ? 4 : 2);
-    }
-    this._areasLayer?.draw();
+    this._selectedMarkerId = null;
+    this._syncCanvasInteractivity();
   }
 
   private _addAreaRect() {
-    if (!this._config || !this._stage) return;
+    this._addAreaShape("rect");
+  }
+
+  private _addAreaPolygon() {
+    this._addAreaShape("polygon");
+  }
+
+  private _addAreaShape(type: "rect" | "polygon") {
+    if (!this._canEdit || !this._config || !this._stage) return;
     const plan = this._getCurrentPlan();
     if (!plan) return;
 
-    const stageWidth = this._stage.width();
-    const stageHeight = this._stage.height();
-    const width = stageWidth * 0.25;
-    const height = stageHeight * 0.2;
-    const x = (stageWidth - width) / 2;
-    const y = (stageHeight - height) / 2;
-
-    const id = `area_${Date.now()}`;
+    const center = this._getVisibleCanvasCenter();
+    const id = this._newId("area");
     const newArea: AreaShape = {
       id,
       area_id: "",
-      shape: {
-        type: "rect",
-        x,
-        y,
-        width,
-        height,
-      },
+      shape:
+        type === "polygon"
+          ? {
+              type: "polygon",
+              x: center.x,
+              y: center.y,
+              points: [-120, -70, 100, -90, 140, 60, -80, 90],
+            }
+          : {
+              type: "rect",
+              x: center.x - 120,
+              y: center.y - 80,
+              width: 240,
+              height: 160,
+            },
       tags: [],
       style: {
         fillOpacity: 0.4,
         strokeWidth: 2,
-        fill: "rgba(33, 150, 243, 0.2)",
+        fill: "#2196f3",
         stroke: "#2196f3",
       },
     };
@@ -671,16 +839,17 @@ export class FloorplanPanel extends LitElement {
       plans: updatedPlans,
     };
 
-    this.saveConfig();
-    this._renderFloorplan();
     this._selectedAreaId = id;
+    this._selectedMarkerId = null;
+    void this.saveConfig();
+    this._renderFloorplan();
   }
 
   private _updateAreaShape(
     areaId: string,
     updates: { x?: number; y?: number; width?: number; height?: number }
   ) {
-    if (!this._config) return;
+    if (!this._canEdit || !this._config) return;
     const plan = this._getCurrentPlan();
     if (!plan) return;
 
@@ -707,18 +876,27 @@ export class FloorplanPanel extends LitElement {
       plans: updatedPlans,
     };
 
-    this.saveConfig();
+    void this.saveConfig();
   }
 
-  private async _loadHAAreas() {
+  private async _loadRegistry() {
+    if (!this._canEdit) return;
     try {
-      const result = await this.hass.callWS<{ areas: HassArea[] }>({
+      const result = await this.hass.callWS<{
+        areas: HassArea[];
+        entities: HassEntityRegistry[];
+      }>({
         type: "floorplan_ui/list_registry",
       });
       this._haAreas = result.areas;
+      this._haEntities = result.entities.sort((left, right) =>
+        left.entity_id.localeCompare(right.entity_id)
+      );
     } catch (err) {
-      console.error("Failed to load HA areas for floorplan:", err);
+      console.error("Failed to load Home Assistant registry:", err);
       this._haAreas = [];
+      this._haEntities = [];
+      this._setError("Home Assistant areas and entities could not be loaded.");
     }
   }
 
@@ -730,7 +908,7 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _onBindAreaChange(e: Event) {
-    if (!this._config || !this._selectedAreaId) return;
+    if (!this._canEdit || !this._config || !this._selectedAreaId) return;
     const select = e.target as HTMLSelectElement;
     const newAreaId = select.value;
     const plan = this._getCurrentPlan();
@@ -751,11 +929,12 @@ export class FloorplanPanel extends LitElement {
       plans: updatedPlans,
     };
 
-    this.saveConfig();
+    void this.saveConfig();
+    this._renderAreas(this._getCurrentPlan());
   }
 
   private _deleteSelectedArea() {
-    if (!this._config || !this._selectedAreaId) return;
+    if (!this._canEdit || !this._config || !this._selectedAreaId) return;
     const plan = this._getCurrentPlan();
     if (!plan) return;
     if (!window.confirm("Delete selected area? This cannot be undone.")) return;
@@ -774,18 +953,319 @@ export class FloorplanPanel extends LitElement {
     };
 
     this._selectedAreaId = null;
-    this.saveConfig();
+    void this.saveConfig();
     this._renderFloorplan();
+  }
+
+  private _renderMarkers(plan: Plan | null) {
+    if (!this._markersLayer) return;
+
+    this._markersLayer.destroyChildren();
+    this._markerGroups.clear();
+    if (!plan) return;
+
+    const currentView = this._getCurrentView();
+    const registryByEntity = new Map(this._haEntities.map((entity) => [entity.entity_id, entity]));
+
+    for (const marker of plan.markers ?? []) {
+      if (!markerMatchesView(marker, currentView)) continue;
+
+      const state = this.hass.states[marker.entity_id];
+      const registryEntry = registryByEntity.get(marker.entity_id);
+      const label = getMarkerLabel(marker, state, registryEntry);
+      const showLabel = marker.label_mode !== "off";
+
+      const group = new Konva.Group({
+        x: marker.pos.x,
+        y: marker.pos.y,
+        draggable: this._editMode,
+      });
+      const dot = new Konva.Circle({
+        name: "marker-dot",
+        radius: 19,
+        fill: getMarkerColor(state),
+        stroke: "#ffffff",
+        strokeWidth: this._selectedMarkerId === marker.id ? 4 : 2,
+        shadowColor: "#000000",
+        shadowBlur: 5,
+        shadowOpacity: 0.25,
+      });
+      const glyph = new Konva.Text({
+        x: -10,
+        y: -10,
+        width: 20,
+        align: "center",
+        text: getDomainGlyph(marker.entity_id),
+        fill: "#ffffff",
+        fontSize: 16,
+        fontStyle: "bold",
+        listening: false,
+      });
+      const nameLabel = new Konva.Text({
+        name: "marker-label",
+        x: 26,
+        y: -17,
+        text: showLabel ? label : "",
+        fill: "#212121",
+        fontSize: 13,
+        fontStyle: "bold",
+        padding: 2,
+        listening: false,
+      });
+      const valueLabel = new Konva.Text({
+        name: "marker-value",
+        x: 26,
+        y: 1,
+        text: showLabel ? getMarkerValue(marker, state) : "",
+        fill: "#424242",
+        fontSize: 12,
+        padding: 2,
+        listening: false,
+      });
+
+      group.add(dot, glyph, nameLabel, valueLabel);
+      group.on("click", (event) => {
+        event.cancelBubble = true;
+        if (this._editMode) {
+          this._selectedMarkerId = marker.id;
+          this._selectedAreaId = null;
+          this._syncCanvasInteractivity();
+        } else {
+          this._openMoreInfo(marker.entity_id);
+        }
+      });
+      group.on("dragend", () => {
+        if (!this._editMode) return;
+        this._updateMarker(marker.id, { pos: group.position() });
+      });
+      group.on("mouseenter", () => {
+        if (this._stage) this._stage.container().style.cursor = "pointer";
+      });
+      group.on("mouseleave", () => {
+        if (this._stage) this._stage.container().style.cursor = "default";
+      });
+
+      this._markersLayer.add(group);
+      this._markerGroups.set(marker.id, group);
+    }
+
+    this._markersLayer.batchDraw();
+  }
+
+  private _refreshMarkerLiveValues() {
+    const plan = this._getCurrentPlan();
+    if (!plan || !this._markersLayer) return;
+
+    const registryByEntity = new Map(this._haEntities.map((entity) => [entity.entity_id, entity]));
+    for (const marker of plan.markers ?? []) {
+      const group = this._markerGroups.get(marker.id);
+      if (!group) continue;
+
+      const state = this.hass.states[marker.entity_id];
+      const dot = group.findOne(".marker-dot") as Konva.Circle | undefined;
+      const value = group.findOne(".marker-value") as Konva.Text | undefined;
+      const label = group.findOne(".marker-label") as Konva.Text | undefined;
+      dot?.fill(getMarkerColor(state));
+      value?.text(marker.label_mode === "off" ? "" : getMarkerValue(marker, state));
+      label?.text(getMarkerLabel(marker, state, registryByEntity.get(marker.entity_id)));
+    }
+    this._markersLayer.batchDraw();
+  }
+
+  private _getSelectedMarker(): Marker | null {
+    if (!this._selectedMarkerId) return null;
+    return (
+      this._getCurrentPlan()?.markers.find((marker) => marker.id === this._selectedMarkerId) ?? null
+    );
+  }
+
+  private _addMarker() {
+    if (!this._canEdit || !this._config || !this._entityToAdd.trim()) return;
+    const plan = this._getCurrentPlan();
+    if (!plan) return;
+
+    const entityId = this._entityToAdd.trim();
+    const registryEntry = this._haEntities.find((entity) => entity.entity_id === entityId);
+    if (!registryEntry && !this.hass.states[entityId]) {
+      this._setError("Select an existing Home Assistant entity.");
+      return;
+    }
+
+    const marker: Marker = {
+      id: this._newId("marker"),
+      entity_id: entityId,
+      area_id: registryEntry?.area_id ?? null,
+      pos: this._getVisibleCanvasCenter(),
+      icon: registryEntry?.icon ?? "mdi:circle",
+      label_mode: "auto",
+      tags: defaultTagsForEntity(entityId),
+      bind: { primary: { source: "state" } },
+    };
+
+    this._config = {
+      ...this._config,
+      plans: this._config.plans.map((candidate) =>
+        candidate.plan_id === plan.plan_id
+          ? { ...candidate, markers: [...candidate.markers, marker] }
+          : candidate
+      ),
+    };
+    this._selectedMarkerId = marker.id;
+    this._selectedAreaId = null;
+    this._entityToAdd = "";
+    void this.saveConfig();
+    this._renderMarkers(this._getCurrentPlan());
+  }
+
+  private _updateMarker(markerId: string, updates: Partial<Marker>) {
+    if (!this._canEdit || !this._config) return;
+    const plan = this._getCurrentPlan();
+    if (!plan) return;
+
+    this._config = {
+      ...this._config,
+      plans: this._config.plans.map((candidate) =>
+        candidate.plan_id === plan.plan_id
+          ? {
+              ...candidate,
+              markers: candidate.markers.map((marker) =>
+                marker.id === markerId ? { ...marker, ...updates } : marker
+              ),
+            }
+          : candidate
+      ),
+    };
+    void this.saveConfig();
+  }
+
+  private _onMarkerTagsChange(event: Event) {
+    const marker = this._getSelectedMarker();
+    if (!marker) return;
+    const tags = (event.target as HTMLInputElement).value
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    this._updateMarker(marker.id, { tags: [...new Set(tags)] });
+    this._renderMarkers(this._getCurrentPlan());
+  }
+
+  private _onMarkerLabelModeChange(event: Event) {
+    const marker = this._getSelectedMarker();
+    if (!marker) return;
+    const labelMode = (event.target as HTMLSelectElement).value as Marker["label_mode"];
+    this._updateMarker(marker.id, { label_mode: labelMode });
+    this._renderMarkers(this._getCurrentPlan());
+  }
+
+  private _deleteSelectedMarker() {
+    if (!this._canEdit || !this._config || !this._selectedMarkerId) return;
+    const plan = this._getCurrentPlan();
+    if (!plan || !window.confirm("Delete selected marker?")) return;
+
+    this._config = {
+      ...this._config,
+      plans: this._config.plans.map((candidate) =>
+        candidate.plan_id === plan.plan_id
+          ? {
+              ...candidate,
+              markers: candidate.markers.filter((marker) => marker.id !== this._selectedMarkerId),
+            }
+          : candidate
+      ),
+    };
+    this._selectedMarkerId = null;
+    void this.saveConfig();
+    this._renderMarkers(this._getCurrentPlan());
+  }
+
+  private _openMoreInfo(entityId: string) {
+    this.dispatchEvent(
+      new CustomEvent("hass-more-info", {
+        bubbles: true,
+        composed: true,
+        detail: { entityId },
+      })
+    );
+  }
+
+  private _getCurrentView(): View | undefined {
+    return this._config?.views.find((view) => view.id === this._currentView);
   }
 
   private _setView(viewId: string) {
     this._currentView = viewId;
   }
 
+  private _addView() {
+    if (!this._canEdit || !this._config) return;
+    const name = window.prompt("New view name")?.trim();
+    if (!name) return;
+
+    const baseId =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "view";
+    let id = baseId;
+    let suffix = 2;
+    while (this._config.views.some((view) => view.id === id)) {
+      id = `${baseId}-${suffix++}`;
+    }
+
+    this._config = {
+      ...this._config,
+      views: [...this._config.views, { id, name, filters: {} }],
+    };
+    this._currentView = id;
+    void this.saveConfig();
+  }
+
+  private _deleteCurrentView() {
+    if (!this._canEdit || !this._config || this._currentView === "all") return;
+    if (!window.confirm("Delete the current view?")) return;
+
+    this._config = {
+      ...this._config,
+      views: this._config.views.filter((view) => view.id !== this._currentView),
+    };
+    this._currentView = "all";
+    void this.saveConfig();
+  }
+
+  private _updateViewFilter(filterName: "domains" | "tags" | "area_ids", event: Event) {
+    if (!this._canEdit || !this._config) return;
+    const values = (event.target as HTMLInputElement).value
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    this._config = {
+      ...this._config,
+      views: this._config.views.map((view) => {
+        if (view.id !== this._currentView) return view;
+        const filters: View["filters"] = { ...view.filters };
+        filters[filterName] = values.length ? [...new Set(values)] : undefined;
+        return { ...view, filters };
+      }),
+    };
+    void this.saveConfig();
+    this._renderMarkers(this._getCurrentPlan());
+  }
+
   private _handleFileUpload(e: Event) {
+    if (!this._canEdit) return;
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
+    input.value = "";
+    if (!file) return;
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      this._setError("Only PNG and JPEG floorplans are supported.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_FILE_BYTES) {
+      this._setError("The floorplan image must not exceed 4 MB.");
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -794,15 +1274,17 @@ export class FloorplanPanel extends LitElement {
       img.onload = () => {
         this._createNewPlan(file.name, dataUrl, img.width, img.height);
       };
+      img.onerror = () => this._setError("The selected image could not be decoded.");
       img.src = dataUrl;
     };
+    reader.onerror = () => this._setError("The selected image could not be read.");
     reader.readAsDataURL(file);
   }
 
   private _createNewPlan(name: string, imageUrl: string, width: number, height: number) {
-    if (!this._config) return;
+    if (!this._canEdit || !this._config) return;
 
-    const planId = `plan_${Date.now()}`;
+    const planId = this._newId("plan");
     const newPlan: Plan = {
       plan_id: planId,
       name: name.replace(/\.[^.]+$/, ""),
@@ -817,7 +1299,7 @@ export class FloorplanPanel extends LitElement {
       plans: [...this._config.plans, newPlan],
     };
     this._currentPlanId = planId;
-    this.saveConfig();
+    void this.saveConfig();
     this._renderFloorplan();
   }
 
@@ -825,17 +1307,43 @@ export class FloorplanPanel extends LitElement {
     (this.renderRoot.querySelector(".file-input") as HTMLInputElement)?.click();
   }
 
-  protected render() {
-    const views = this._config?.views ?? [
-      { id: "all", name: "All" },
-      { id: "heating", name: "Heating" },
-      { id: "lights", name: "Lights" },
-      { id: "network", name: "Network" },
-    ];
+  private _getVisibleCanvasCenter(): { x: number; y: number } {
+    if (!this._stage) return { x: 0, y: 0 };
+    const transform = this._stage.getAbsoluteTransform().copy().invert();
+    return transform.point({
+      x: this._stage.width() / 2,
+      y: this._stage.height() / 2,
+    });
+  }
 
+  private _newId(prefix: string): string {
+    const randomPart = Math.random().toString(36).slice(2, 9);
+    return `${prefix}_${Date.now().toString(36)}_${randomPart}`;
+  }
+
+  protected render() {
+    const fallbackViews: View[] = [
+      { id: "all", name: "All", filters: {} },
+      { id: "heating", name: "Heating", filters: { tags: ["heating"] } },
+      { id: "lights", name: "Lights", filters: { domains: ["light", "switch"] } },
+      { id: "network", name: "Network", filters: { tags: ["network"] } },
+    ];
+    const views = this._config?.views.length ? this._config.views : fallbackViews;
     const plans = this._config?.plans ?? [];
     const currentPlan = this._getCurrentPlan();
+    const currentView = this._getCurrentView();
     const selectedArea = this._getSelectedArea();
+    const selectedMarker = this._getSelectedMarker();
+    const entitySearch = this._entitySearch.trim().toLowerCase();
+    const entityOptions = this._haEntities
+      .filter((entity) => {
+        if (!entitySearch) return true;
+        return (
+          entity.entity_id.toLowerCase().includes(entitySearch) ||
+          entity.name?.toLowerCase().includes(entitySearch)
+        );
+      })
+      .slice(0, 250);
 
     return html`
       <div class="container">
@@ -846,9 +1354,7 @@ export class FloorplanPanel extends LitElement {
               <span>Plan:</span>
               <select @change=${this._selectPlan} .value=${currentPlan?.plan_id ?? ""}>
                 <option value="">${plans.length === 0 ? "No plans" : "Select plan"}</option>
-                ${plans.map(
-                  (plan) => html` <option value=${plan.plan_id}>${plan.name}</option> `
-                )}
+                ${plans.map((plan) => html`<option value=${plan.plan_id}>${plan.name}</option>`)}
               </select>
             </div>
             <div class="view-tabs">
@@ -865,34 +1371,101 @@ export class FloorplanPanel extends LitElement {
             </div>
           </div>
           <div class="toolbar-right">
-            <button
-              class="edit-toggle ${this._editMode ? "active" : ""}"
-              @click=${this._toggleEditMode}
-            >
-              ${this._editMode ? "Done" : "Edit"}
-            </button>
+            ${this._canEdit
+              ? html`
+                  <button
+                    class="edit-toggle ${this._editMode ? "active" : ""}"
+                    @click=${this._toggleEditMode}
+                  >
+                    ${this._editMode ? "Done" : "Edit"}
+                  </button>
+                `
+              : html`<span class="viewer-note">View only</span>`}
           </div>
         </div>
 
+        ${this._notice ? html`<div class="status">${this._notice}</div>` : ""}
+        ${this._error ? html`<div class="status error">${this._error}</div>` : ""}
         ${this._editMode
           ? html`
               <div class="edit-toolbar">
-                <button @click=${this._triggerFileUpload}>📁 Upload Image</button>
+                <button @click=${this._triggerFileUpload}>Upload Image</button>
                 <button ?disabled=${!currentPlan} @click=${this._renameCurrentPlan}>
                   Rename Plan
                 </button>
                 <button ?disabled=${!currentPlan} @click=${this._deleteCurrentPlan}>
                   Delete Plan
                 </button>
-                <button ?disabled=${!currentPlan} @click=${this._addAreaRect}>
-                  + Add Area (Rect)
+                <button ?disabled=${!currentPlan} @click=${this._addAreaRect}>+ Rectangle</button>
+                <button ?disabled=${!currentPlan} @click=${this._addAreaPolygon}>+ Polygon</button>
+                <button @click=${this._addView}>+ View</button>
+                <button ?disabled=${this._currentView === "all"} @click=${this._deleteCurrentView}>
+                  Delete View
                 </button>
+              </div>
+              <div class="edit-toolbar">
+                <label>
+                  Search entity:
+                  <input
+                    class="grow"
+                    type="search"
+                    .value=${this._entitySearch}
+                    @input=${(event: Event) =>
+                      (this._entitySearch = (event.target as HTMLInputElement).value)}
+                    placeholder="light.kitchen"
+                  />
+                </label>
+                <select
+                  class="grow"
+                  .value=${this._entityToAdd}
+                  @change=${(event: Event) =>
+                    (this._entityToAdd = (event.target as HTMLSelectElement).value)}
+                >
+                  <option value="">Select entity (${this._haEntities.length})</option>
+                  ${entityOptions.map(
+                    (entity) => html`
+                      <option value=${entity.entity_id}>
+                        ${entity.entity_id}${entity.name ? ` — ${entity.name}` : ""}
+                      </option>
+                    `
+                  )}
+                </select>
+                <button ?disabled=${!currentPlan || !this._entityToAdd} @click=${this._addMarker}>
+                  + Marker
+                </button>
+              </div>
+              <div class="edit-toolbar">
+                <strong>View “${currentView?.name ?? this._currentView}” filters:</strong>
+                <label>
+                  Domains:
+                  <input
+                    .value=${currentView?.filters.domains?.join(", ") ?? ""}
+                    @change=${(event: Event) => this._updateViewFilter("domains", event)}
+                    placeholder="light, switch"
+                  />
+                </label>
+                <label>
+                  Tags:
+                  <input
+                    .value=${currentView?.filters.tags?.join(", ") ?? ""}
+                    @change=${(event: Event) => this._updateViewFilter("tags", event)}
+                    placeholder="heating"
+                  />
+                </label>
+                <label>
+                  Area IDs:
+                  <input
+                    .value=${currentView?.filters.area_ids?.join(", ") ?? ""}
+                    @change=${(event: Event) => this._updateViewFilter("area_ids", event)}
+                    placeholder="living_room"
+                  />
+                </label>
               </div>
               ${selectedArea
                 ? html`
                     <div class="edit-toolbar">
                       <span>Selected area:</span>
-                      <span><strong>${selectedArea.id}</strong></span>
+                      <strong>${selectedArea.id}</strong>
                       <label>
                         HA Area:
                         <select
@@ -901,10 +1474,7 @@ export class FloorplanPanel extends LitElement {
                         >
                           <option value="">Unbound</option>
                           ${this._haAreas.map(
-                            (area) =>
-                              html`<option value=${area.id}>
-                                ${area.name}
-                              </option>`
+                            (area) => html`<option value=${area.id}>${area.name}</option>`
                           )}
                         </select>
                       </label>
@@ -912,10 +1482,44 @@ export class FloorplanPanel extends LitElement {
                     </div>
                   `
                 : ""}
+              ${selectedMarker
+                ? html`
+                    <div class="edit-toolbar">
+                      <span>Selected marker:</span>
+                      <strong>${selectedMarker.entity_id}</strong>
+                      <label>
+                        Tags:
+                        <input
+                          .value=${selectedMarker.tags.join(", ")}
+                          @change=${this._onMarkerTagsChange}
+                          placeholder="heating, downstairs"
+                        />
+                      </label>
+                      <label>
+                        Label:
+                        <select
+                          .value=${selectedMarker.label_mode}
+                          @change=${this._onMarkerLabelModeChange}
+                        >
+                          <option value="auto">Auto</option>
+                          <option value="short">Short</option>
+                          <option value="full">Full</option>
+                          <option value="off">Off</option>
+                        </select>
+                      </label>
+                      <button @click=${this._deleteSelectedMarker}>Delete Marker</button>
+                    </div>
+                  `
+                : ""}
             `
           : ""}
 
-        <input type="file" class="file-input" accept="image/*" @change=${this._handleFileUpload} />
+        <input
+          type="file"
+          class="file-input"
+          accept="image/png,image/jpeg"
+          @change=${this._handleFileUpload}
+        />
 
         <div class="canvas-container">
           ${this._loading

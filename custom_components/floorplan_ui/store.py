@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import STORAGE_KEY, STORAGE_VERSION
+from .const import (
+    CONFIG_VERSION,
+    MAX_CONFIG_SIZE_BYTES,
+    STORAGE_KEY,
+    STORAGE_VERSION,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,7 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 def _default_config() -> dict[str, Any]:
     """Return default configuration."""
     return {
-        "version": 1,
+        "version": CONFIG_VERSION,
         "plans": [],
         "views": [
             {"id": "all", "name": "All", "filters": {}},
@@ -51,7 +58,16 @@ class FloorplanStore:
                     _LOGGER.warning("Invalid floorplan config in storage, resetting to default")
                     self._data = _default_config()
                 else:
-                    self._data = self._normalize_config(data)
+                    migrated = self._migrate_config(data)
+                    valid, error = self._validate_config_structure(migrated)
+                    if not valid:
+                        _LOGGER.warning(
+                            "Invalid floorplan config in storage (%s), resetting to default",
+                            error,
+                        )
+                        self._data = _default_config()
+                    else:
+                        self._data = self._normalize_config(migrated)
         return self._data
 
     async def async_save(self, data: dict[str, Any]) -> None:
@@ -66,6 +82,14 @@ class FloorplanStore:
 
     async def async_update_config(self, config: dict[str, Any]) -> None:
         """Update the configuration."""
+        serialized_size = len(
+            json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        )
+        if serialized_size > MAX_CONFIG_SIZE_BYTES:
+            raise ValueError(
+                f"Config exceeds the {MAX_CONFIG_SIZE_BYTES // 1_000_000} MB limit"
+            )
+
         valid, error = self._validate_config_structure(config)
         if not valid:
             raise ValueError(error or "Invalid floorplan configuration")
@@ -75,43 +99,148 @@ class FloorplanStore:
 
     @staticmethod
     def _validate_config_structure(config: dict[str, Any]) -> tuple[bool, str | None]:
-        """Validate the high-level structure of the config.
-
-        This is intentionally minimal — most issues are handled by normalization.
-        """
+        """Validate persisted data before it reaches the frontend."""
         if not isinstance(config, dict):
             return False, "Config must be a dictionary"
 
-        # version (if present) should be int-coercible
         version = config.get("version")
         if version is not None:
             try:
-                int(version)
+                parsed_version = int(version)
             except (TypeError, ValueError):
                 return False, "Config.version must be an integer"
+            if parsed_version > CONFIG_VERSION:
+                return False, "Config was created by a newer Floorplan UI version"
 
-        # plans and views (if present) should be lists
         plans = config.get("plans")
         if plans is not None and not isinstance(plans, list):
             return False, "Config.plans must be a list"
+        if isinstance(plans, list) and len(plans) > 20:
+            return False, "Config supports at most 20 plans"
 
         views = config.get("views")
         if views is not None and not isinstance(views, list):
             return False, "Config.views must be a list"
+        if isinstance(views, list) and len(views) > 50:
+            return False, "Config supports at most 50 views"
+
+        for plan_index, plan in enumerate(plans or []):
+            if not isinstance(plan, dict):
+                return False, f"Plan {plan_index} must be an object"
+            if not isinstance(plan.get("plan_id"), str) or not plan["plan_id"]:
+                return False, f"Plan {plan_index} needs a plan_id"
+            if not isinstance(plan.get("name"), str) or not plan["name"].strip():
+                return False, f"Plan {plan_index} needs a name"
+
+            background = plan.get("background")
+            if not isinstance(background, dict):
+                return False, f"Plan {plan_index}.background must be an object"
+            url = background.get("url", "")
+            if not isinstance(url, str):
+                return False, f"Plan {plan_index}.background.url must be a string"
+            if url.startswith("data:") and not url.startswith(
+                ("data:image/png;base64,", "data:image/jpeg;base64,")
+            ):
+                return False, f"Plan {plan_index} has an unsupported embedded image"
+
+            for dimension in ("width", "height"):
+                value = background.get(dimension)
+                if not FloorplanStore._is_finite_number(value) or not 0 < float(value) <= 50_000:
+                    return False, f"Plan {plan_index}.background.{dimension} is invalid"
+
+            areas = plan.get("areas", [])
+            markers = plan.get("markers", [])
+            if not isinstance(areas, list) or len(areas) > 500:
+                return False, f"Plan {plan_index}.areas is invalid"
+            if not isinstance(markers, list) or len(markers) > 1_000:
+                return False, f"Plan {plan_index}.markers is invalid"
+
+            for area_index, area in enumerate(areas):
+                if not isinstance(area, dict) or not isinstance(area.get("id"), str):
+                    return False, f"Plan {plan_index} area {area_index} is invalid"
+                shape = area.get("shape")
+                if not isinstance(shape, dict) or shape.get("type") not in {
+                    "rect",
+                    "polygon",
+                }:
+                    return False, f"Plan {plan_index} area {area_index} shape is invalid"
+                if shape["type"] == "polygon":
+                    points = shape.get("points")
+                    if (
+                        not isinstance(points, list)
+                        or len(points) < 6
+                        or len(points) % 2
+                        or not all(FloorplanStore._is_finite_number(point) for point in points)
+                    ):
+                        return False, f"Plan {plan_index} area {area_index} points are invalid"
+
+            for marker_index, marker in enumerate(markers):
+                if not isinstance(marker, dict):
+                    return False, f"Plan {plan_index} marker {marker_index} is invalid"
+                if not isinstance(marker.get("id"), str) or not isinstance(
+                    marker.get("entity_id"), str
+                ):
+                    return False, f"Plan {plan_index} marker {marker_index} needs IDs"
+                pos = marker.get("pos")
+                if not isinstance(pos, dict) or not all(
+                    FloorplanStore._is_finite_number(pos.get(axis)) for axis in ("x", "y")
+                ):
+                    return False, f"Plan {plan_index} marker {marker_index} position is invalid"
+
+        for view_index, view in enumerate(views or []):
+            if not isinstance(view, dict):
+                return False, f"View {view_index} must be an object"
+            if not isinstance(view.get("id"), str) or not isinstance(view.get("name"), str):
+                return False, f"View {view_index} needs an id and name"
+            filters = view.get("filters", {})
+            if not isinstance(filters, dict):
+                return False, f"View {view_index}.filters must be an object"
+            for filter_name in ("domains", "tags", "area_ids"):
+                values = filters.get(filter_name)
+                if values is not None and (
+                    not isinstance(values, list)
+                    or not all(isinstance(value, str) for value in values)
+                ):
+                    return False, f"View {view_index}.{filter_name} is invalid"
 
         return True, None
+
+    @staticmethod
+    def _is_finite_number(value: Any) -> bool:
+        """Return whether a value is a finite non-boolean number."""
+        return (
+            not isinstance(value, bool)
+            and isinstance(value, (int, float))
+            and math.isfinite(float(value))
+        )
+
+    @staticmethod
+    def _migrate_config(config: dict[str, Any]) -> dict[str, Any]:
+        """Migrate older config schemas without mutating the stored object."""
+        migrated = json.loads(json.dumps(config))
+        try:
+            version = int(migrated.get("version", 1))
+        except (TypeError, ValueError):
+            return migrated
+
+        if version < 2:
+            for plan in migrated.get("plans", []):
+                if not isinstance(plan, dict):
+                    continue
+                for marker in plan.get("markers", []):
+                    if isinstance(marker, dict):
+                        marker.setdefault("area_id", None)
+            version = 2
+
+        migrated["version"] = version
+        return migrated
 
     @staticmethod
     def _normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         """Normalize config, filling in reasonable defaults for missing fields."""
         normalized: dict[str, Any] = {}
 
-        # version
-        try:
-            normalized["version"] = int(config.get("version", 1))
-        except (TypeError, ValueError):
-            _LOGGER.warning("Invalid version in config, defaulting to 1")
-            normalized["version"] = 1
+        normalized["version"] = CONFIG_VERSION
 
         # views
         views = config.get("views")

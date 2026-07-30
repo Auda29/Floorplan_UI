@@ -41,13 +41,14 @@ async def websocket_get_config(
     connection.send_result(msg["id"], config)
 
 
+@websocket_api.require_admin
+@websocket_api.async_response
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "floorplan_ui/save_config",
         vol.Required("config"): dict,
     }
 )
-@websocket_api.async_response
 async def websocket_save_config(
     hass: HomeAssistant,
     connection: ActiveConnection,
@@ -69,6 +70,8 @@ async def websocket_save_config(
     connection.send_result(msg["id"], {"success": True})
 
 
+@websocket_api.require_admin
+@websocket_api.async_response
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "floorplan_ui/list_registry",
@@ -76,7 +79,6 @@ async def websocket_save_config(
         vol.Optional("filter_area"): str,
     }
 )
-@websocket_api.async_response
 async def websocket_list_registry(
     hass: HomeAssistant,
     connection: ActiveConnection,

@@ -11,7 +11,5 @@ services:
       - ./ha_config:/config
       # Mount custom component for development
       - ./custom_components:/config/custom_components
-      # Mount frontend build output
-      - ./frontend/dist:/config/www/floorplan-ui
     environment:
       - TZ=Europe/Berlin
