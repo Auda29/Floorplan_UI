@@ -88,13 +88,20 @@ class FloorplanStoreTests(unittest.TestCase):
     def test_v1_migration_adds_marker_area_and_does_not_mutate_input(self) -> None:
         original = valid_config()
         original["version"] = 1
-        del original["plans"][0]["markers"][0]["area_id"]
+        original_marker = original["plans"][0]["markers"][0]
+        for field in ("area_id", "icon", "label_mode", "tags", "bind"):
+            del original_marker[field]
 
         migrated = FloorplanStore._migrate_config(original)
 
         self.assertEqual(2, migrated["version"])
-        self.assertIsNone(migrated["plans"][0]["markers"][0]["area_id"])
-        self.assertNotIn("area_id", original["plans"][0]["markers"][0])
+        migrated_marker = migrated["plans"][0]["markers"][0]
+        self.assertIsNone(migrated_marker["area_id"])
+        self.assertEqual("mdi:circle", migrated_marker["icon"])
+        self.assertEqual("auto", migrated_marker["label_mode"])
+        self.assertEqual([], migrated_marker["tags"])
+        self.assertEqual({"primary": {"source": "state"}}, migrated_marker["bind"])
+        self.assertNotIn("area_id", original_marker)
 
     def test_future_schema_is_rejected(self) -> None:
         config = valid_config()
@@ -128,6 +135,89 @@ class FloorplanStoreTests(unittest.TestCase):
         valid, error = FloorplanStore._validate_config_structure(config)
         self.assertFalse(valid)
         self.assertIn("unsupported", error or "")
+
+    def test_validate_and_normalize_supplies_alpha_defaults(self) -> None:
+        config = valid_config()
+        config["views"] = []
+        config["plans"][0]["areas"] = [
+            {
+                "id": "area-1",
+                "shape": {
+                    "type": "rect",
+                    "x": 10,
+                    "y": 20,
+                    "width": 200,
+                    "height": 100,
+                },
+            }
+        ]
+
+        normalized = FloorplanStore.validate_and_normalize(config)
+
+        self.assertEqual("all", normalized["default_view"])
+        self.assertEqual(
+            ["all", "heating", "lights", "network", "entertainment"],
+            [view["id"] for view in normalized["views"]],
+        )
+        area = normalized["plans"][0]["areas"][0]
+        self.assertEqual("", area["area_id"])
+        self.assertEqual([], area["tags"])
+        self.assertEqual(0.4, area["style"]["fillOpacity"])
+
+    def test_area_overlay_and_marker_secondary_binding_are_accepted(self) -> None:
+        config = valid_config()
+        config["default_view"] = "all"
+        config["plans"][0]["markers"][0]["bind"]["secondary"] = {
+            "source": "attr",
+            "attr": "unit_of_measurement",
+            "format": "{value}",
+        }
+        config["views"][0]["area_overlay"] = {
+            "primary": {
+                "mode": "entity",
+                "entity_id": "sensor.temperature",
+                "source": "state",
+                "format": "{value} C",
+            },
+            "badges": [
+                {
+                    "entity_id": "binary_sensor.window",
+                    "when": {"state_is": "on"},
+                    "label": "Window open",
+                }
+            ],
+        }
+
+        self.assertEqual((True, None), FloorplanStore._validate_config_structure(config))
+
+    def test_unknown_default_view_is_rejected(self) -> None:
+        config = valid_config()
+        config["default_view"] = "missing"
+
+        valid, error = FloorplanStore._validate_config_structure(config)
+
+        self.assertFalse(valid)
+        self.assertIn("existing view", error or "")
+
+    def test_invalid_rectangle_size_is_rejected(self) -> None:
+        config = valid_config()
+        config["plans"][0]["areas"] = [
+            {
+                "id": "area-1",
+                "shape": {
+                    "type": "rect",
+                    "x": 0,
+                    "y": 0,
+                    "width": 0,
+                    "height": 100,
+                },
+            }
+        ]
+
+        valid, error = FloorplanStore._validate_config_structure(config)
+
+        self.assertFalse(valid)
+        self.assertIn("size", error or "")
 
 
 if __name__ == "__main__":

@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { HassEntity, Marker, View } from "../types/home-assistant";
 import {
   getEntityDisplayName,
+  getActiveBadges,
   getMarkerLabel,
   getMarkerValue,
   markerMatchesView,
+  resolveValueSpec,
 } from "./marker-utils";
 
 const marker: Marker = {
@@ -60,6 +62,40 @@ describe("marker display values", () => {
       },
     };
     expect(getMarkerValue(attributeMarker, state)).toBe("180 lx");
+  });
+
+  it("resolves secondary marker values and view value specs", () => {
+    const markerWithSecondary: Marker = {
+      ...marker,
+      bind: {
+        primary: { source: "state" },
+        secondary: { source: "attr", attr: "brightness", format: "{value}%" },
+      },
+    };
+    expect(getMarkerValue(markerWithSecondary, state, "secondary")).toBe("180%");
+    expect(
+      resolveValueSpec(
+        {
+          mode: "entity",
+          entity_id: marker.entity_id,
+          source: "attr",
+          attr: "brightness",
+          format: "{value} lx",
+        },
+        { [state.entity_id]: state }
+      )
+    ).toBe("180 lx");
+  });
+
+  it("returns only badges whose state condition matches", () => {
+    const badges = getActiveBadges(
+      [
+        { entity_id: marker.entity_id, when: { state_is: "on" }, label: "On" },
+        { entity_id: marker.entity_id, when: { state_is: "off" }, label: "Off" },
+      ],
+      { [state.entity_id]: state }
+    );
+    expect(badges.map((badge) => badge.label)).toEqual(["On"]);
   });
 
   it("handles missing entities", () => {

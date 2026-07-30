@@ -71,6 +71,7 @@ export interface HassEntityRegistry {
 
 export interface FloorplanConfig {
   version: number;
+  default_view?: string;
   plans: Plan[];
   views: View[];
 }

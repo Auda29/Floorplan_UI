@@ -1,4 +1,12 @@
-import type { HassEntity, HassEntityRegistry, Marker, View } from "../types/home-assistant";
+import type {
+  BadgeSpec,
+  HassEntity,
+  HassEntityRegistry,
+  Marker,
+  ValueBinding,
+  ValueSpec,
+  View,
+} from "../types/home-assistant";
 
 export function getEntityDomain(entityId: string): string {
   return entityId.split(".", 1)[0] ?? "";
@@ -30,10 +38,13 @@ export function getMarkerLabel(
   return getEntityDisplayName(marker, state, registryEntry);
 }
 
-export function getMarkerValue(marker: Marker, state: HassEntity | undefined): string {
+export function resolveValueBinding(
+  binding: ValueBinding | undefined,
+  state: HassEntity | undefined
+): string {
+  if (!binding) return "";
   if (!state) return "Unavailable";
 
-  const binding = marker.bind.primary;
   const rawValue =
     binding.source === "attr" && binding.attr ? state.attributes[binding.attr] : state.state;
 
@@ -43,6 +54,29 @@ export function getMarkerValue(marker: Marker, state: HassEntity | undefined): s
 
   const value = String(rawValue);
   return binding.format?.includes("{value}") ? binding.format.split("{value}").join(value) : value;
+}
+
+export function getMarkerValue(
+  marker: Marker,
+  state: HassEntity | undefined,
+  slot: "primary" | "secondary" = "primary"
+): string {
+  return resolveValueBinding(marker.bind[slot], state);
+}
+
+export function resolveValueSpec(
+  spec: ValueSpec | undefined,
+  states: Record<string, HassEntity>
+): string {
+  if (!spec?.entity_id) return "";
+  return resolveValueBinding(spec, states[spec.entity_id]);
+}
+
+export function getActiveBadges(
+  badges: BadgeSpec[] | undefined,
+  states: Record<string, HassEntity>
+): BadgeSpec[] {
+  return (badges ?? []).filter((badge) => states[badge.entity_id]?.state === badge.when.state_is);
 }
 
 export function markerMatchesView(marker: Marker, view: View | undefined): boolean {

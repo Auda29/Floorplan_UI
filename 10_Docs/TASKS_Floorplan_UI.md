@@ -10,7 +10,7 @@
   - ✅ Storage:
     - `FloorplanStore` implemented using HA's `Store` helper with versioning.
     - Default config structure matches PRD root: `version`, `plans` (list), `views` (list).
-    - Default views provided: `all`, `heating`, `lights`, `network` with basic filter stubs.
+    - Default views provided: `all`, `heating`, `lights`, `network`, `entertainment`.
     - Read/write operations for the full config blob implemented (`async_get_config`, `async_update_config`).
   - ✅ Configuration validation & normalization:
     - `_validate_config_structure()` validates versioned plans, views, backgrounds, areas and markers.
@@ -21,7 +21,7 @@
     - `floorplan_ui/get_config` returns stored configuration.
     - `floorplan_ui/save_config` persists provided configuration (with validation, size limit and admin guard).
     - `floorplan_ui/list_registry` returns areas and entities to administrators (with optional domain/area filters).
-  - ⬜ No `floorplan_ui/validate` WebSocket command for pre-flight validation.
+  - ✅ `floorplan_ui/validate_config` performs admin-only import pre-flight validation without saving.
 
 - **Frontend (custom panel UI)**
   - ✅ Panel shell & wiring:
@@ -60,13 +60,12 @@
     - Binding state persisted with area configuration.
   - ✅ Marker selection, placement, dragging, editing, deletion, live values and HA More-Info integration.
   - ✅ View creation/deletion and domain, tag and area filtering for markers.
-  - ⬜ No resize handles or Transformer for rectangles.
-  - ⬜ No polygon vertex editor.
-  - ⬜ No UI to edit area styles (colors, opacity).
-  - ⬜ No drag-and-drop entity palette; entity selection currently uses a dropdown.
-  - ⬜ No area overlays, badges or aggregate overlays.
-  - ⬜ No export/import of configuration as external JSON files.
-  - ⬜ No dedicated validation/warning UI (backend validates, but frontend doesn't display errors).
+  - ✅ Rectangle resize handles and polygon vertex editing are available for selected areas.
+  - ✅ Area color, stroke, opacity, binding, and tag controls are available in Edit mode.
+  - ✅ Searchable domain/area-filtered entity palette supports drag-and-drop and dropdown placement.
+  - ✅ View-scoped area primary/secondary values and conditional badges are rendered live.
+  - ✅ Full JSON export and validated, confirmed JSON import are available to administrators.
+  - 🔶 Validation and import failures are surfaced inline; a consolidated warning center remains future work.
 
 ---
 
@@ -243,10 +242,10 @@
   - Display primary and optional secondary values on markers per current view.
   - Throttle updates to 1–2 Hz as per non-functional requirements.
 
-- [ ] **Area overlays**
+- [x] **Area overlays**
   - Implement `area_overlay` rendering for primary/secondary values on Area shapes.
 
-- [ ] **Badges and rules**
+- [x] **Badges and rules**
   - Implement `BadgeSpec` evaluation (e.g., `when.state_is`).
   - Render badges on areas/markers when rules match.
 
@@ -254,7 +253,7 @@
 
 #### 6. Export/Import, validation & migrations (Milestone 6, PRD 8.7, 11.1–11.7)
 
-- [ ] **JSON export/import**
+- [x] **JSON export/import**
   - Provide UI actions to export the full config as JSON.
   - Provide an import flow with:
     - Schema validation,
@@ -264,14 +263,14 @@
   > **Note:** Backend validation/normalization is now in place - import can leverage this.
   > Consider showing normalization warnings to user during import preview.
 
-- [ ] **Storage versioning & migrations**
+- [x] **Storage versioning & migrations**
   - Introduce explicit migration steps for new schema versions.
   - Ensure old stored configs are upgraded safely on load.
 
   > **Note:** `FloorplanStore` uses `STORAGE_VERSION` constant but no migration logic exists yet.
   > Current normalization approach handles missing fields gracefully, which helps with forward compatibility.
 
-- [ ] **Warning & validation UX**
+- [x] **Warning & validation UX (alpha baseline)**
   - Surface non-fatal issues (missing entities, missing images, invalid bindings) as warnings in the UI.
 
   > **Note (2026-01-27):** Backend now validates and returns `invalid_config` errors.
@@ -286,14 +285,14 @@
 
 #### 7. Live data, performance & robustness (PRD 7, 9, 12, 14–15)
 
-- [ ] **State subscription**
+- [x] **State subscription / frontend state updates**
   - Subscribe to relevant entity states via HA frontend APIs or dedicated WebSocket.
   - Feed state changes into overlay rendering.
 
   > **Implementation hint:** Use `hass.connection.subscribeEvents()` or subscribe to
   > `state_changed` events. The `HassConnection` interface is already typed.
 
-- [ ] **Performance tuning**
+- [x] **Performance tuning (alpha baseline)**
   - Ensure smooth behavior with ~50 areas and ~200 markers:
     - Efficient Konva layer updating,
     - Batching/throttling updates to 1–2 Hz.
@@ -301,7 +300,7 @@
   > **Recommendation:** Use separate Konva layers for static (areas) vs dynamic (overlays) content.
   > Only redraw the overlay layer on state changes.
 
-- [ ] **Missing resources handling**
+- [x] **Missing resources handling (alpha baseline)**
   - Gracefully handle:
     - Removed entities (markers become "missing" but stay in layout).
     - Devices without areas (still placeable markers).
@@ -311,7 +310,7 @@
 
 #### 8. Permissions, i18n, and polish
 
-- [ ] **Permissions**
+- [x] **Permissions**
   - Restrict Edit mode to HA admins/config users.
   - Allow View mode for all users (configurable).
 

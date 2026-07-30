@@ -21,6 +21,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     """Register WebSocket commands."""
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_save_config)
+    websocket_api.async_register_command(hass, websocket_validate_config)
     websocket_api.async_register_command(hass, websocket_list_registry)
 
 
@@ -68,6 +69,29 @@ async def websocket_save_config(
         return
 
     connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.require_admin
+@websocket_api.async_response
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "floorplan_ui/validate_config",
+        vol.Required("config"): dict,
+    }
+)
+async def websocket_validate_config(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Validate and normalize an imported configuration without saving it."""
+    store = hass.data[DOMAIN]["store"]
+    try:
+        config = store.validate_and_normalize(msg["config"])
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_config", str(err))
+        return
+    connection.send_result(msg["id"], {"config": config})
 
 
 @websocket_api.require_admin

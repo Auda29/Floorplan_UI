@@ -34,7 +34,11 @@ class WebSocketSecurityTests(unittest.TestCase):
             if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
         }
 
-        for handler in ("websocket_save_config", "websocket_list_registry"):
+        for handler in (
+            "websocket_save_config",
+            "websocket_validate_config",
+            "websocket_list_registry",
+        ):
             self.assertIn("websocket_api.require_admin", handlers[handler])
 
 

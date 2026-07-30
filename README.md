@@ -4,24 +4,34 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** early alpha (`0.2.0`). Back up your Home Assistant configuration
+> **Status:** first testable alpha (`0.1.0`). Back up your Home Assistant configuration
 > before testing it with production data.
 
 ## Current capabilities
 
 - Import and manage multiple floorplans.
 - Pan and zoom the canvas.
-- Add rectangular and polygonal area shapes and bind them to HA Areas.
-- Add, drag, configure, and remove entity markers.
+- Add, move, resize, and style rectangular areas; add, move, and vertex-edit
+  polygonal areas; bind both to HA Areas and tags.
+- Search and filter the HA entity registry, then add markers by selection or
+  drag-and-drop onto the plan.
+- Move, configure, and remove markers, including primary/secondary state or
+  attribute bindings and formatting.
 - Display live entity states and open the native HA More-Info dialog.
-- Filter markers by domain, tag, or HA Area using configurable views.
+- Create, rename, reorder, select a default, and delete views; filter markers
+  and areas by domain, tag, or HA Area.
+- Show live area values and state-conditioned badges with updates throttled to
+  two redraws per second.
+- Export the complete versioned configuration to JSON and validate, preview,
+  and import it again.
 - Persist the versioned configuration through the HA Storage API.
 - Keep view mode available to users while restricting all editor writes and
   registry access to Home Assistant administrators.
 
-Markers, filters, and live state labels form the first complete vertical slice.
-Vertex-level polygon editing, area KPI overlays, JSON import/export, and undo/redo
-remain planned work.
+The `0.1.0` scope is intentionally an alpha: undo/redo, localization, touch-first
+editor polish, aggregate area calculations, and a dedicated warning center remain
+planned work. Missing or unavailable entities remain visible with an unavailable
+value and neutral marker color.
 
 ## Installation with HACS
 
