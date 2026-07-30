@@ -39,6 +39,13 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertGreater(bundle.stat().st_size, 100_000)
         self.assertGreater(icon.stat().st_size, 1_000)
 
+    def test_yaml_setup_declares_an_empty_config_schema(self) -> None:
+        integration = (ROOT / "custom_components/floorplan_ui/__init__.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)", integration)
+
 
 if __name__ == "__main__":
     unittest.main()
