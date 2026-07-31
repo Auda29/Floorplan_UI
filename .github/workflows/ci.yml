@@ -54,6 +54,31 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q custom_components/floorplan_ui
 
+  home-assistant:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimum
+            packages: >-
+              homeassistant==2025.7.3
+              pytest-homeassistant-custom-component==0.13.262
+          - name: current
+            packages: >-
+              homeassistant
+              pytest-homeassistant-custom-component
+    name: Home Assistant (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install Home Assistant test dependencies
+        run: pip install pytest pytest-asyncio ${{ matrix.packages }}
+      - name: Integration tests
+        run: pytest -q tests_ha
+
   validate-hacs:
     runs-on: ubuntu-latest
     steps:

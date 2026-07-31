@@ -3,7 +3,8 @@ services:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: floorplan-ui-ha
     restart: unless-stopped
-    privileged: true
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "8124:8123"
     volumes:

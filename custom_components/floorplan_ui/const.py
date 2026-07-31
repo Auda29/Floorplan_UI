@@ -3,12 +3,16 @@
 DOMAIN = "floorplan_ui"
 STORAGE_KEY = "floorplan_ui.config"
 STORAGE_VERSION = 1
-CONFIG_VERSION = 2
-INTEGRATION_VERSION = "0.1.1"
+CONFIG_VERSION = 3
+INTEGRATION_VERSION = "0.1.2"
 
 PANEL_URL = "floorplan-ui"
 PANEL_TITLE = "Floorplan"
 PANEL_ICON = "mdi:floor-plan"
 STATIC_URL = "/floorplan_ui_static"
+ASSET_API_URL = "/api/floorplan_ui/assets"
+ASSET_STORAGE_DIRECTORY = ".storage/floorplan_ui/assets"
+ASSET_URL_EXPIRATION_SECONDS = 86_400
 
 MAX_CONFIG_SIZE_BYTES = 20_000_000
+MAX_IMAGE_FILE_BYTES = 4_000_000

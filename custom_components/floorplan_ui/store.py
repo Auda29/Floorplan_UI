@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import copy
 import json
 import logging
 import math
@@ -10,6 +12,12 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
+from .asset_store import (
+    AssetValidationError,
+    FloorplanAssetStore,
+    decode_image_data_url,
+    is_asset_id,
+)
 from .const import (
     CONFIG_VERSION,
     MAX_CONFIG_SIZE_BYTES,
@@ -20,10 +28,22 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
+class ConfigConflictError(ValueError):
+    """Raised when a client attempts to overwrite a newer configuration."""
+
+    def __init__(self, current_revision: int) -> None:
+        """Initialize the conflict."""
+        self.current_revision = current_revision
+        super().__init__(
+            f"Configuration changed in another session (current revision: {current_revision})"
+        )
+
+
 def _default_config() -> dict[str, Any]:
     """Return default configuration."""
     return {
         "version": CONFIG_VERSION,
+        "revision": 0,
         "default_view": "all",
         "plans": [],
         "views": [
@@ -47,15 +67,28 @@ def _default_config() -> dict[str, Any]:
 class FloorplanStore:
     """Manage floorplan configuration storage."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, asset_store: FloorplanAssetStore) -> None:
         """Initialize the store."""
         self._hass = hass
-        self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._asset_store = asset_store
+        self._store: Store = Store(
+            hass,
+            STORAGE_VERSION,
+            STORAGE_KEY,
+            atomic_writes=True,
+        )
         self._data: dict[str, Any] | None = None
+        self._load_lock = asyncio.Lock()
+        self._update_lock = asyncio.Lock()
 
     async def async_load(self) -> dict[str, Any]:
         """Load the configuration from storage."""
-        if self._data is None:
+        if self._data is not None:
+            return self._data
+
+        async with self._load_lock:
+            if self._data is not None:
+                return self._data
             data = await self._store.async_load()
             if data is None:
                 self._data = _default_config()
@@ -65,7 +98,10 @@ class FloorplanStore:
                     self._data = _default_config()
                 else:
                     migrated = self._migrate_config(data)
-                    valid, error = self._validate_config_structure(migrated)
+                    valid, error = self._validate_config_structure(
+                        migrated,
+                        allow_embedded_images=True,
+                    )
                     if not valid:
                         _LOGGER.warning(
                             "Invalid floorplan config in storage (%s), resetting to default",
@@ -73,26 +109,65 @@ class FloorplanStore:
                         )
                         self._data = _default_config()
                     else:
-                        self._data = self._normalize_config(migrated)
+                        materialized = await self._async_materialize_embedded_images(migrated)
+                        self._data = self._normalize_config(materialized)
+                        if self._data != data:
+                            await self._store.async_save(self._data)
         return self._data
 
     async def async_save(self, data: dict[str, Any]) -> None:
         """Save the configuration to storage."""
-        self._data = data
-        await self._store.async_save(data)
+        persisted = copy.deepcopy(data)
+        await self._store.async_save(persisted)
+        self._data = persisted
         _LOGGER.debug("Floorplan UI config saved")
 
     async def async_get_config(self) -> dict[str, Any]:
         """Get the current configuration."""
-        return await self.async_load()
+        return copy.deepcopy(await self.async_load())
 
-    async def async_update_config(self, config: dict[str, Any]) -> None:
-        """Update the configuration."""
-        normalized = self.validate_and_normalize(config)
-        await self.async_save(normalized)
+    async def async_update_config(
+        self,
+        config: dict[str, Any],
+        base_revision: int,
+    ) -> dict[str, Any]:
+        """Atomically update the configuration if its revision is current."""
+        async with self._update_lock:
+            current = await self.async_load()
+            current_revision = int(current.get("revision", 0))
+            if base_revision != current_revision:
+                raise ConfigConflictError(current_revision)
+
+            normalized = self.validate_and_normalize(config)
+            await self._async_validate_asset_references(normalized)
+            normalized["revision"] = current_revision + 1
+            await self.async_save(normalized)
+            return copy.deepcopy(normalized)
+
+    async def async_validate_config(
+        self,
+        config: dict[str, Any],
+        *,
+        allow_embedded_images: bool = False,
+    ) -> dict[str, Any]:
+        """Validate a config and confirm that all asset references exist."""
+        normalized = self.validate_and_normalize(
+            config,
+            allow_embedded_images=allow_embedded_images,
+        )
+        await self._async_validate_asset_references(
+            normalized,
+            allow_embedded_images=allow_embedded_images,
+        )
+        return normalized
 
     @classmethod
-    def validate_and_normalize(cls, config: dict[str, Any]) -> dict[str, Any]:
+    def validate_and_normalize(
+        cls,
+        config: dict[str, Any],
+        *,
+        allow_embedded_images: bool = False,
+    ) -> dict[str, Any]:
         """Validate and normalize a configuration without persisting it."""
         serialized_size = len(
             json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -103,13 +178,20 @@ class FloorplanStore:
             )
 
         migrated = cls._migrate_config(config)
-        valid, error = cls._validate_config_structure(migrated)
+        valid, error = cls._validate_config_structure(
+            migrated,
+            allow_embedded_images=allow_embedded_images,
+        )
         if not valid:
             raise ValueError(error or "Invalid floorplan configuration")
         return cls._normalize_config(migrated)
 
     @staticmethod
-    def _validate_config_structure(config: dict[str, Any]) -> tuple[bool, str | None]:
+    def _validate_config_structure(
+        config: dict[str, Any],
+        *,
+        allow_embedded_images: bool = False,
+    ) -> tuple[bool, str | None]:
         """Validate persisted data before it reaches the frontend."""
         if not isinstance(config, dict):
             return False, "Config must be a dictionary"
@@ -122,6 +204,14 @@ class FloorplanStore:
                 return False, "Config.version must be an integer"
             if parsed_version > CONFIG_VERSION:
                 return False, "Config was created by a newer Floorplan UI version"
+
+        revision = config.get("revision", 0)
+        if (
+            isinstance(revision, bool)
+            or not isinstance(revision, int)
+            or revision < 0
+        ):
+            return False, "Config.revision must be a non-negative integer"
 
         plans = config.get("plans")
         if plans is not None and not isinstance(plans, list):
@@ -160,13 +250,30 @@ class FloorplanStore:
             background = plan.get("background")
             if not isinstance(background, dict):
                 return False, f"Plan {plan_index}.background must be an object"
+            if background.get("type", "image") != "image":
+                return False, f"Plan {plan_index}.background.type is invalid"
+
+            asset_id = background.get("asset_id")
+            content_type = background.get("content_type")
             url = background.get("url", "")
-            if not isinstance(url, str):
-                return False, f"Plan {plan_index}.background.url must be a string"
-            if url.startswith("data:") and not url.startswith(
-                ("data:image/png;base64,", "data:image/jpeg;base64,")
-            ):
-                return False, f"Plan {plan_index} has an unsupported embedded image"
+            if asset_id is not None:
+                if not is_asset_id(asset_id):
+                    return False, f"Plan {plan_index} has an invalid image asset ID"
+                if content_type not in {"image/png", "image/jpeg"}:
+                    return False, f"Plan {plan_index} has an invalid image content type"
+                if url is not None and not isinstance(url, str):
+                    return False, f"Plan {plan_index}.background.url must be a string"
+            elif url:
+                if not isinstance(url, str):
+                    return False, f"Plan {plan_index}.background.url must be a string"
+                if not allow_embedded_images:
+                    return False, f"Plan {plan_index} must reference a local image asset"
+                try:
+                    decode_image_data_url(url)
+                except AssetValidationError as err:
+                    return False, f"Plan {plan_index}: {err}"
+            elif content_type is not None:
+                return False, f"Plan {plan_index} has image metadata without an asset"
 
             for dimension in ("width", "height"):
                 value = background.get(dimension)
@@ -396,7 +503,7 @@ class FloorplanStore:
     @staticmethod
     def _migrate_config(config: dict[str, Any]) -> dict[str, Any]:
         """Migrate older config schemas without mutating the stored object."""
-        migrated = json.loads(json.dumps(config))
+        migrated = copy.deepcopy(config)
         try:
             version = int(migrated.get("version", 1))
         except (TypeError, ValueError):
@@ -415,7 +522,26 @@ class FloorplanStore:
                         marker.setdefault("bind", {"primary": {"source": "state"}})
             version = 2
 
+        if version < 3:
+            for plan in migrated.get("plans", []):
+                if not isinstance(plan, dict):
+                    continue
+                background = plan.get("background")
+                if not isinstance(background, dict):
+                    continue
+                legacy_url = background.get("url")
+                if isinstance(legacy_url, str) and legacy_url and not legacy_url.startswith(
+                    "data:"
+                ):
+                    _LOGGER.warning(
+                        "Removed non-local background URL while migrating plan %s",
+                        plan.get("plan_id", "<unknown>"),
+                    )
+                    background["url"] = ""
+            version = 3
+
         migrated["version"] = version
+        migrated.setdefault("revision", 0)
         return migrated
 
     @staticmethod
@@ -424,6 +550,12 @@ class FloorplanStore:
         normalized: dict[str, Any] = {}
 
         normalized["version"] = CONFIG_VERSION
+        revision = config.get("revision", 0)
+        normalized["revision"] = (
+            revision
+            if isinstance(revision, int) and not isinstance(revision, bool) and revision >= 0
+            else 0
+        )
 
         default_view = config.get("default_view")
         normalized["default_view"] = default_view if isinstance(default_view, str) else "all"
@@ -481,6 +613,8 @@ class FloorplanStore:
             if not isinstance(background, dict):
                 background = {}
             bg_type = background.get("type") or "image"
+            asset_id = background.get("asset_id")
+            content_type = background.get("content_type")
             url = background.get("url") if isinstance(background.get("url"), str) else ""
             width = background.get("width")
             height = background.get("height")
@@ -492,12 +626,17 @@ class FloorplanStore:
                 height = int(height) if height is not None else 600
             except (TypeError, ValueError):
                 height = 600
-            plan["background"] = {
+            normalized_background: dict[str, Any] = {
                 "type": bg_type,
-                "url": url,
                 "width": width,
                 "height": height,
             }
+            if is_asset_id(asset_id) and content_type in {"image/png", "image/jpeg"}:
+                normalized_background["asset_id"] = asset_id
+                normalized_background["content_type"] = content_type
+            elif url.startswith("data:"):
+                normalized_background["url"] = url
+            plan["background"] = normalized_background
 
             # areas & markers
             areas = raw_plan.get("areas")
@@ -547,3 +686,41 @@ class FloorplanStore:
 
         normalized["plans"] = plans
         return normalized
+
+    async def _async_materialize_embedded_images(
+        self,
+        config: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Move legacy data URLs into content-addressed files."""
+        materialized = copy.deepcopy(config)
+        for plan in materialized.get("plans", []):
+            if not isinstance(plan, dict):
+                continue
+            background = plan.get("background")
+            if not isinstance(background, dict):
+                continue
+            url = background.get("url")
+            if not isinstance(url, str) or not url.startswith("data:"):
+                continue
+            reference = await self._asset_store.async_store_data_url(url)
+            background.pop("url", None)
+            background.update(reference.as_dict())
+        return materialized
+
+    async def _async_validate_asset_references(
+        self,
+        config: dict[str, Any],
+        *,
+        allow_embedded_images: bool = False,
+    ) -> None:
+        """Ensure every persisted image reference resolves to a local file."""
+        for plan_index, plan in enumerate(config.get("plans", [])):
+            background = plan.get("background", {})
+            if allow_embedded_images and background.get("url"):
+                continue
+            asset_id = background.get("asset_id")
+            content_type = background.get("content_type")
+            if asset_id is None:
+                continue
+            if not await self._asset_store.async_exists(asset_id, content_type):
+                raise ValueError(f"Plan {plan_index} references a missing image asset")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import sys
 import types
@@ -43,19 +44,22 @@ def _load_store_module():
 
 STORE_MODULE = _load_store_module()
 FloorplanStore = STORE_MODULE.FloorplanStore
+ConfigConflictError = STORE_MODULE.ConfigConflictError
 
 
 def valid_config() -> dict:
-    """Return a minimal valid v2 configuration."""
+    """Return a minimal valid v3 configuration."""
     return {
-        "version": 2,
+        "version": 3,
+        "revision": 0,
         "plans": [
             {
                 "plan_id": "ground-floor",
                 "name": "Ground floor",
                 "background": {
                     "type": "image",
-                    "url": "data:image/png;base64,AA==",
+                    "asset_id": "a" * 64,
+                    "content_type": "image/png",
                     "width": 1200,
                     "height": 800,
                 },
@@ -94,7 +98,8 @@ class FloorplanStoreTests(unittest.TestCase):
 
         migrated = FloorplanStore._migrate_config(original)
 
-        self.assertEqual(2, migrated["version"])
+        self.assertEqual(3, migrated["version"])
+        self.assertEqual(0, migrated["revision"])
         migrated_marker = migrated["plans"][0]["markers"][0]
         self.assertIsNone(migrated_marker["area_id"])
         self.assertEqual("mdi:circle", migrated_marker["icon"])
@@ -131,10 +136,35 @@ class FloorplanStoreTests(unittest.TestCase):
 
     def test_embedded_svg_is_rejected(self) -> None:
         config = valid_config()
+        del config["plans"][0]["background"]["asset_id"]
+        del config["plans"][0]["background"]["content_type"]
         config["plans"][0]["background"]["url"] = "data:image/svg+xml;base64,AA=="
-        valid, error = FloorplanStore._validate_config_structure(config)
+        valid, error = FloorplanStore._validate_config_structure(
+            config,
+            allow_embedded_images=True,
+        )
         self.assertFalse(valid)
-        self.assertIn("unsupported", error or "")
+        self.assertIn("PNG/JPEG", error or "")
+
+    def test_external_background_url_is_rejected(self) -> None:
+        config = valid_config()
+        del config["plans"][0]["background"]["asset_id"]
+        del config["plans"][0]["background"]["content_type"]
+        config["plans"][0]["background"]["url"] = "https://example.com/floorplan.png"
+
+        valid, error = FloorplanStore._validate_config_structure(config)
+
+        self.assertFalse(valid)
+        self.assertIn("local image asset", error or "")
+
+    def test_invalid_revision_is_rejected(self) -> None:
+        config = valid_config()
+        config["revision"] = -1
+
+        valid, error = FloorplanStore._validate_config_structure(config)
+
+        self.assertFalse(valid)
+        self.assertIn("revision", error or "")
 
     def test_validate_and_normalize_supplies_alpha_defaults(self) -> None:
         config = valid_config()
@@ -218,6 +248,76 @@ class FloorplanStoreTests(unittest.TestCase):
 
         self.assertFalse(valid)
         self.assertIn("size", error or "")
+
+
+class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
+    """Exercise compare-and-swap configuration updates."""
+
+    async def asyncSetUp(self) -> None:
+        self.store = FloorplanStore.__new__(FloorplanStore)
+        self.store._data = valid_config()
+        self.store._update_lock = asyncio.Lock()
+
+        class AssetStore:
+            @staticmethod
+            async def async_exists(asset_id: str, content_type: str) -> bool:
+                return asset_id == "a" * 64 and content_type == "image/png"
+
+        self.store._asset_store = AssetStore()
+
+        async def async_load(instance):
+            return instance._data
+
+        async def async_save(instance, data):
+            instance._data = data
+
+        self.store.async_load = types.MethodType(async_load, self.store)
+        self.store.async_save = types.MethodType(async_save, self.store)
+
+    async def test_update_increments_revision(self) -> None:
+        updated = await self.store.async_update_config(valid_config(), 0)
+
+        self.assertEqual(1, updated["revision"])
+        self.assertEqual(1, self.store._data["revision"])
+
+    async def test_stale_update_is_rejected(self) -> None:
+        await self.store.async_update_config(valid_config(), 0)
+
+        with self.assertRaises(ConfigConflictError) as context:
+            await self.store.async_update_config(valid_config(), 0)
+
+        self.assertEqual(1, context.exception.current_revision)
+
+    async def test_legacy_embedded_image_is_materialized_without_mutating_input(
+        self,
+    ) -> None:
+        config = valid_config()
+        background = config["plans"][0]["background"]
+        del background["asset_id"]
+        del background["content_type"]
+        background["url"] = "data:image/png;base64,iVBORw0KGgp1bml0LXRlc3Q="
+
+        class Reference:
+            @staticmethod
+            def as_dict() -> dict[str, str]:
+                return {
+                    "asset_id": "b" * 64,
+                    "content_type": "image/png",
+                }
+
+        class MaterializingAssetStore:
+            @staticmethod
+            async def async_store_data_url(data_url: str):
+                if not data_url.startswith("data:image/png;base64,"):
+                    raise AssertionError("unexpected data URL")
+                return Reference()
+
+        self.store._asset_store = MaterializingAssetStore()
+        migrated = await self.store._async_materialize_embedded_images(config)
+
+        self.assertIn("url", config["plans"][0]["background"])
+        self.assertNotIn("url", migrated["plans"][0]["background"])
+        self.assertEqual("b" * 64, migrated["plans"][0]["background"]["asset_id"])
 
 
 if __name__ == "__main__":

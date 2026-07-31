@@ -10,6 +10,7 @@ export interface HomeAssistant {
   language: string;
   connection: HassConnection;
   callWS<T>(msg: HassWSMessage): Promise<T>;
+  fetchWithAuth(path: string, init?: Record<string, unknown>): Promise<Response>;
   callService(domain: string, service: string, data?: Record<string, unknown>): Promise<void>;
 }
 
@@ -71,20 +72,29 @@ export interface HassEntityRegistry {
 
 export interface FloorplanConfig {
   version: number;
+  revision: number;
   default_view?: string;
   plans: Plan[];
   views: View[];
 }
 
+export interface FloorplanBackground {
+  type: "image";
+  asset_id?: string;
+  content_type?: "image/png" | "image/jpeg";
+  /**
+   * Short-lived runtime URL returned by the backend. It is never persisted for
+   * asset-backed images.
+   */
+  url?: string;
+  width: number;
+  height: number;
+}
+
 export interface Plan {
   plan_id: string;
   name: string;
-  background: {
-    type: "image";
-    url: string;
-    width: number;
-    height: number;
-  };
+  background: FloorplanBackground;
   areas: AreaShape[];
   markers: Marker[];
   view: {

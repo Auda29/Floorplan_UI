@@ -6,6 +6,37 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-31
+
+### Added
+
+- Add undo/redo history and a serialized autosave queue with pending, saving,
+  failed, retry, and conflict states.
+- Add real Home Assistant integration tests for setup, authorization,
+  revision conflicts, and image upload validation on minimum and current HA.
+
+### Changed
+
+- Store floorplan images as private content-addressed files and keep only their
+  asset references in the versioned configuration. Existing Base64 images are
+  migrated automatically.
+- Keep JSON backups portable by embedding image data during export and
+  restoring it through the authenticated upload endpoint during import.
+- Split configuration, asset transfer, save queue, plan, area, view, marker,
+  dialogs, styles, and Konva stage/rendering concerns into dedicated frontend
+  modules.
+- Replace native browser prompt/confirm calls with in-panel dialogs and make
+  stage initialization deterministic.
+- Strip dependency console calls from the production bundle.
+
+### Security
+
+- Enforce image MIME type, file signature, and size limits on the backend.
+- Reject external background URLs and require local private image assets.
+- Detect stale configuration writes with monotonic revisions instead of
+  silently accepting last-write-wins updates.
+- Remove unnecessary privileged mode from the development container.
+
 ## [0.1.1] - 2026-07-30
 
 Documentation and release-metadata maintenance release. There are no functional
@@ -52,6 +83,7 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Auda29/Floorplan_UI/releases/tag/v0.1.0

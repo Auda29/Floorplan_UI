@@ -4,7 +4,7 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** public alpha (current release: `0.1.1`). It is intentionally available
+> **Status:** public alpha (current release: `0.1.2`). It is intentionally available
 > as a regular release to custom HACS repository users. Back up your Home Assistant
 > configuration before testing it with production data.
 
@@ -82,7 +82,7 @@ python -m compileall -q custom_components/floorplan_ui
 The complete user-facing release history is maintained in
 [`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
 from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
-The current public release is [`v0.1.1`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.1.1).
+The current public release is [`v0.1.2`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.1.2).
 
 Versions below `1.0.0` represent initial development and may contain breaking
 changes. Public `0.x` releases are offered through the normal HACS channel;
@@ -104,7 +104,8 @@ prerelease version such as `0.2.0-beta.1` and are marked as GitHub prereleases.
 
 - **Frontend:** TypeScript, Lit, Konva, Vite
 - **Backend:** Home Assistant custom integration and WebSocket API
-- **Storage:** Home Assistant Storage API with explicit schema migration
+- **Storage:** Home Assistant Storage API for small, revisioned configuration
+  documents plus private content-addressed image files below `.storage`
 - **Distribution:** HACS custom integration; no cloud dependency
 
 The product requirements and architectural decisions are documented under
@@ -113,9 +114,15 @@ The product requirements and architectural decisions are documented under
 ## Security
 
 The panel itself is visible in read-only mode to authenticated Home Assistant
-users. Saving configuration and reading the full Area/Entity registries require
-an administrator connection. Embedded image uploads are limited to PNG/JPEG and
-4 MB per file; the complete persisted configuration is limited to 20 MB.
+users. Saving configuration, uploading images, and reading the full Area/Entity
+registries require an administrator connection. Image bytes are validated
+server-side against the declared PNG/JPEG type and a 4 MB per-file limit before
+being stored privately. Configuration writes use revision checks to prevent one
+administrator tab from silently overwriting another; the complete persisted
+configuration is limited to 20 MB.
+
+JSON exports remain portable: referenced images are embedded in the downloaded
+backup and uploaded into the private asset store again during import.
 
 Report security or functional issues through the repository's
 [issue tracker](https://github.com/Auda29/Floorplan_UI/issues).

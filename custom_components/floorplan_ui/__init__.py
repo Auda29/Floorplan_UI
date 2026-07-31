@@ -12,6 +12,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
+from .asset_store import FloorplanAssetStore
+from .asset_view import FloorplanAssetUploadView, FloorplanAssetView
 from .const import (
     DOMAIN,
     INTEGRATION_VERSION,
@@ -77,14 +79,18 @@ def _remove_panel(hass: HomeAssistant) -> None:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Floorplan UI component."""
+    asset_store = FloorplanAssetStore(hass)
     hass.data[DOMAIN] = {
-        "store": FloorplanStore(hass),
+        "asset_store": asset_store,
+        "store": FloorplanStore(hass, asset_store),
         "panel_registered": False,
     }
 
     await hass.http.async_register_static_paths(
         [StaticPathConfig(STATIC_URL, str(FRONTEND_PATH), True)]
     )
+    hass.http.register_view(FloorplanAssetView)
+    hass.http.register_view(FloorplanAssetUploadView)
     async_register_websocket_commands(hass)
 
     if DOMAIN in config and not await _async_register_panel(hass):

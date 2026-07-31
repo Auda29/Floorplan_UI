@@ -9,6 +9,3 @@ import { FloorplanPanel } from "./components/floorplan-panel";
 if (!customElements.get("floorplan-ui-panel")) {
   customElements.define("floorplan-ui-panel", FloorplanPanel);
 }
-
-// Log that the panel has loaded
-console.info("%c FLOORPLAN-UI %c loaded ", "background: #3498db; color: white", "");

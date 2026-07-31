@@ -7,14 +7,25 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 
+from .asset_view import signed_asset_path
 from .const import DOMAIN
+from .store import ConfigConflictError
 
 if TYPE_CHECKING:
     from homeassistant.components.websocket_api import ActiveConnection
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _attach_asset_urls(hass: HomeAssistant, config: dict[str, Any]) -> None:
+    """Add transient signed URLs to asset-backed backgrounds."""
+    for plan in config.get("plans", []):
+        background = plan.get("background", {})
+        asset_id = background.get("asset_id")
+        if asset_id:
+            background["url"] = signed_asset_path(hass, asset_id)
 
 
 def async_register_websocket_commands(hass: HomeAssistant) -> None:
@@ -39,6 +50,7 @@ async def websocket_get_config(
     """Get floorplan configuration."""
     store = hass.data[DOMAIN]["store"]
     config = await store.async_get_config()
+    _attach_asset_urls(hass, config)
     connection.send_result(msg["id"], config)
 
 
@@ -48,6 +60,7 @@ async def websocket_get_config(
     {
         vol.Required("type"): "floorplan_ui/save_config",
         vol.Required("config"): dict,
+        vol.Required("base_revision"): vol.All(int, vol.Range(min=0)),
     }
 )
 async def websocket_save_config(
@@ -58,7 +71,17 @@ async def websocket_save_config(
     """Save floorplan configuration."""
     store = hass.data[DOMAIN]["store"]
     try:
-        await store.async_update_config(msg["config"])
+        config = await store.async_update_config(
+            msg["config"],
+            msg["base_revision"],
+        )
+    except ConfigConflictError as err:
+        connection.send_error(
+            msg["id"],
+            "config_conflict",
+            str(err),
+        )
+        return
     except ValueError as err:
         _LOGGER.warning("Failed to save floorplan config: %s", err)
         connection.send_error(
@@ -68,7 +91,13 @@ async def websocket_save_config(
         )
         return
 
-    connection.send_result(msg["id"], {"success": True})
+    connection.send_result(
+        msg["id"],
+        {
+            "success": True,
+            "revision": config["revision"],
+        },
+    )
 
 
 @websocket_api.require_admin
@@ -87,10 +116,11 @@ async def websocket_validate_config(
     """Validate and normalize an imported configuration without saving it."""
     store = hass.data[DOMAIN]["store"]
     try:
-        config = store.validate_and_normalize(msg["config"])
+        config = await store.async_validate_config(msg["config"])
     except ValueError as err:
         connection.send_error(msg["id"], "invalid_config", str(err))
         return
+    _attach_asset_urls(hass, config)
     connection.send_result(msg["id"], {"config": config})
 
 
