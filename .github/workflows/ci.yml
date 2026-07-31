@@ -64,12 +64,14 @@ jobs:
             python-version: "3.13"
             packages: >-
               homeassistant==2025.7.3
+              home-assistant-frontend==20250702.3
               pytest-homeassistant-custom-component==0.13.263
               pycares==4.11.0
           - name: current
             python-version: "3.14"
             packages: >-
               homeassistant
+              home-assistant-frontend==20260624.4
               pytest-homeassistant-custom-component
     name: Home Assistant (${{ matrix.name }})
     steps:
