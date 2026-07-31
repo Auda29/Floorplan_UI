@@ -61,10 +61,13 @@ jobs:
       matrix:
         include:
           - name: minimum
+            python-version: "3.13"
             packages: >-
               homeassistant==2025.7.3
               pytest-homeassistant-custom-component==0.13.263
+              pycares==4.11.0
           - name: current
+            python-version: "3.14"
             packages: >-
               homeassistant
               pytest-homeassistant-custom-component
@@ -73,11 +76,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python-version }}
       - name: Install Home Assistant test dependencies
         run: pip install pytest pytest-asyncio ${{ matrix.packages }}
       - name: Integration tests
-        run: python -m pytest -q tests_ha
+        run: python -m pytest -q -o asyncio_mode=auto tests_ha
 
   validate-hacs:
     runs-on: ubuntu-latest
