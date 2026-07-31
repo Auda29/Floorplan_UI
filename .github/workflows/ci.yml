@@ -63,7 +63,7 @@ jobs:
           - name: minimum
             packages: >-
               homeassistant==2025.7.3
-              pytest-homeassistant-custom-component==0.13.262
+              pytest-homeassistant-custom-component==0.13.263
           - name: current
             packages: >-
               homeassistant
@@ -77,7 +77,7 @@ jobs:
       - name: Install Home Assistant test dependencies
         run: pip install pytest pytest-asyncio ${{ matrix.packages }}
       - name: Integration tests
-        run: pytest -q tests_ha
+        run: python -m pytest -q tests_ha
 
   validate-hacs:
     runs-on: ubuntu-latest
