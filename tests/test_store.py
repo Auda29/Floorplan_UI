@@ -125,6 +125,37 @@ class FloorplanStoreTests(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("integer", error or "")
 
+    def test_boolean_and_fractional_versions_are_rejected(self) -> None:
+        for invalid_version in (True, False, 1.5):
+            with self.subTest(version=invalid_version):
+                config = valid_config()
+                config["version"] = invalid_version
+
+                with self.assertRaisesRegex(ValueError, "Config.version must be an integer"):
+                    FloorplanStore.validate_and_normalize(config)
+
+    def test_legacy_non_list_plans_are_rejected_without_migration_crash(self) -> None:
+        config = {"version": 1, "plans": 42}
+
+        with self.assertRaisesRegex(ValueError, "Config.plans must be a list"):
+            FloorplanStore.validate_and_normalize(config)
+
+    def test_legacy_non_list_markers_are_rejected_without_migration_crash(self) -> None:
+        config = valid_config()
+        config["version"] = 1
+        config["plans"][0]["markers"] = 42
+
+        with self.assertRaisesRegex(ValueError, "markers is invalid"):
+            FloorplanStore.validate_and_normalize(config)
+
+    def test_legacy_non_object_area_is_rejected_without_normalization_crash(self) -> None:
+        config = valid_config()
+        config["version"] = 1
+        config["plans"][0]["areas"] = [42]
+
+        with self.assertRaisesRegex(ValueError, "area 0 is invalid"):
+            FloorplanStore.validate_and_normalize(config)
+
     def test_invalid_polygon_is_rejected(self) -> None:
         config = valid_config()
         config["plans"][0]["areas"] = [
