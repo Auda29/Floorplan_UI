@@ -1,8 +1,12 @@
 import type { AreaShape, FloorplanConfig } from "../types/home-assistant";
 
-export type AreaGeometryUpdate = Partial<
-  Pick<AreaShape["shape"], "x" | "y" | "width" | "height" | "points">
->;
+export interface AreaGeometryUpdate {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  points?: number[];
+}
 
 export function createArea(
   areaId: string,
@@ -71,10 +75,32 @@ export function updateAreaShape(
   areaId: string,
   updates: AreaGeometryUpdate
 ): FloorplanConfig {
-  return updateArea(config, planId, areaId, (area) => ({
-    ...area,
-    shape: { ...area.shape, ...updates },
-  }));
+  return updateArea(config, planId, areaId, (area) => {
+    if (area.shape.type === "rect") {
+      const { x, y, width, height } = updates;
+      return {
+        ...area,
+        shape: {
+          ...area.shape,
+          ...(x === undefined ? {} : { x }),
+          ...(y === undefined ? {} : { y }),
+          ...(width === undefined ? {} : { width }),
+          ...(height === undefined ? {} : { height }),
+        },
+      };
+    }
+
+    const { x, y, points } = updates;
+    return {
+      ...area,
+      shape: {
+        ...area.shape,
+        ...(x === undefined ? {} : { x }),
+        ...(y === undefined ? {} : { y }),
+        ...(points && points.length >= 6 ? { points: points as typeof area.shape.points } : {}),
+      },
+    };
+  });
 }
 
 export function removeArea(

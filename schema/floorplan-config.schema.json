@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Auda29/Floorplan_UI/schema/floorplan-config.schema.json",
+  "title": "Floorplan UI configuration",
+  "description": "Versioned persisted Floorplan UI configuration. Background.url is transient in runtime responses and portable JSON exports and is removed before persistence.",
+  "type": "object",
+  "required": ["version", "revision", "plans", "views"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1, "maximum": 3 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "default_view": { "type": "string" },
+    "plans": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/plan" }
+    },
+    "views": {
+      "type": "array",
+      "maxItems": 50,
+      "items": { "$ref": "#/$defs/view" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "background": {
+      "type": "object",
+      "required": ["type", "width", "height"],
+      "properties": {
+        "type": { "const": "image" },
+        "asset_id": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "content_type": { "enum": ["image/png", "image/jpeg"] },
+        "url": {
+          "type": "string",
+          "description": "Transient signed URL or portable PNG/JPEG data URL; never persisted for asset-backed images."
+        },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 50000 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 50000 }
+      },
+      "additionalProperties": false
+    },
+    "rectShape": {
+      "type": "object",
+      "required": ["type", "x", "y", "width", "height"],
+      "properties": {
+        "type": { "const": "rect" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "polygonShape": {
+      "type": "object",
+      "required": ["type", "points"],
+      "properties": {
+        "type": { "const": "polygon" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "points": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "type": "number" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "areaStyle": {
+      "type": "object",
+      "required": ["fillOpacity", "strokeWidth"],
+      "properties": {
+        "fillOpacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "strokeWidth": { "type": "number", "minimum": 0, "maximum": 50 },
+        "fill": { "type": "string" },
+        "stroke": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "area": {
+      "type": "object",
+      "required": ["id", "area_id", "shape", "tags", "style"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "area_id": { "type": ["string", "null"] },
+        "shape": {
+          "oneOf": [
+            { "$ref": "#/$defs/rectShape" },
+            { "$ref": "#/$defs/polygonShape" }
+          ]
+        },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "style": { "$ref": "#/$defs/areaStyle" }
+      },
+      "additionalProperties": false
+    },
+    "valueBinding": {
+      "type": "object",
+      "required": ["source"],
+      "properties": {
+        "source": { "enum": ["state", "attr"] },
+        "attr": { "type": "string" },
+        "format": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "attr" } } },
+          "then": { "required": ["attr"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "marker": {
+      "type": "object",
+      "required": ["id", "entity_id", "pos", "icon", "label_mode", "tags", "bind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "entity_id": { "type": "string", "minLength": 1 },
+        "area_id": { "type": ["string", "null"] },
+        "pos": {
+          "type": "object",
+          "required": ["x", "y"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "icon": { "type": "string" },
+        "label_mode": { "enum": ["off", "short", "full", "auto"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "bind": {
+          "type": "object",
+          "required": ["primary"],
+          "properties": {
+            "primary": { "$ref": "#/$defs/valueBinding" },
+            "secondary": { "$ref": "#/$defs/valueBinding" }
+          },
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "tap": { "enum": ["more-info", "toggle", "none"] }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "required": ["plan_id", "name", "background", "areas", "markers", "view"],
+      "properties": {
+        "plan_id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "background": { "$ref": "#/$defs/background" },
+        "areas": {
+          "type": "array",
+          "maxItems": 500,
+          "items": { "$ref": "#/$defs/area" }
+        },
+        "markers": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": { "$ref": "#/$defs/marker" }
+        },
+        "view": {
+          "type": "object",
+          "required": ["minZoom", "maxZoom"],
+          "properties": {
+            "minZoom": { "type": "number", "exclusiveMinimum": 0 },
+            "maxZoom": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "domains": { "type": "array", "items": { "type": "string" } },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "area_ids": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "valueSpec": {
+      "type": "object",
+      "required": ["mode", "entity_id", "source"],
+      "properties": {
+        "mode": { "const": "entity" },
+        "entity_id": { "type": "string", "minLength": 1 },
+        "source": { "enum": ["state", "attr"] },
+        "attr": { "type": "string" },
+        "format": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "attr" } } },
+          "then": { "required": ["attr"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "badge": {
+      "type": "object",
+      "required": ["entity_id", "when"],
+      "properties": {
+        "entity_id": { "type": "string", "minLength": 1 },
+        "when": {
+          "type": "object",
+          "required": ["state_is"],
+          "properties": { "state_is": { "type": "string", "minLength": 1 } },
+          "additionalProperties": false
+        },
+        "icon": { "type": "string" },
+        "label": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "overlay": {
+      "type": "object",
+      "properties": {
+        "primary": { "$ref": "#/$defs/valueSpec" },
+        "secondary": { "$ref": "#/$defs/valueSpec" },
+        "badges": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/badge" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "view": {
+      "type": "object",
+      "required": ["id", "name", "filters"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "filters": { "$ref": "#/$defs/filters" },
+        "area_overlay": { "$ref": "#/$defs/overlay" },
+        "marker_overlay": { "$ref": "#/$defs/overlay" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
