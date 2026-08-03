@@ -142,6 +142,7 @@ registries require an administrator connection. Upload request bodies are read i
 bounded chunks and rejected above 4 MB. Pillow must fully decode every image as
 PNG or JPEG; MIME/format mismatches, truncated files, decompression bombs,
 dimensions above 16,384 × 16,384, and images above 64 million pixels are rejected.
+CPU-intensive image decoding and hashing run outside Home Assistant's event loop.
 
 Images are private content-addressed assets with exact 64-character lowercase
 SHA-256 IDs. Garbage collection only considers managed `.png`/`.jpg` files, keeps
@@ -149,7 +150,8 @@ referenced assets, applies a seven-day grace period, and runs only after success
 configuration persistence. One deletion failure cannot roll back or abort a save.
 Configuration writes use revision checks to prevent one administrator tab from
 silently overwriting another; the complete persisted configuration is limited to
-20 MB.
+20 MB. Polygon shapes are limited to 1,000 coordinate pairs and must contain a
+complete sequence of x/y pairs.
 
 JSON exports remain portable: referenced images are embedded in the downloaded
 backup and uploaded into the private asset store again during import. Import data

@@ -11,13 +11,15 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Validate legacy container structure before migration and reject damaged imports
   as controlled `invalid_config` errors without mutating submitted data.
 - Fully decode PNG/JPEG uploads with Pillow and enforce MIME, format, file-size,
-  dimension, pixel-count, and decompression-bomb limits.
+  dimension, pixel-count, and decompression-bomb limits outside Home Assistant's
+  event loop, without decoding legacy data URLs twice.
 - Stream request bodies with a hard 4 MB limit instead of reading unbounded
   uploads into memory.
 - Add reference-aware asset garbage collection with managed filename checks, a
   seven-day grace period, post-save ordering, and per-file fault isolation.
 - Add a Draft 2020-12 configuration schema and generate central TypeScript
-  configuration types from it.
+  configuration types from it, with backend-aligned asset, binding, marker, and
+  bounded even-length polygon contracts.
 - Add EN/DE localization, responsive narrow-mode touch targets, pinch zoom,
   keyboard actions, live regions, focus states, and an accessible canvas list.
 
