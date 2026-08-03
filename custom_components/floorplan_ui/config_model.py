@@ -8,7 +8,7 @@ import logging
 import math
 from typing import Any, TypeGuard
 
-from .asset_store import AssetValidationError, decode_image_data_url, is_asset_id
+from .asset_store import AssetValidationError, decode_image_data_url_payload, is_asset_id
 from .const import CONFIG_VERSION, MAX_CONFIG_SIZE_BYTES
 
 _LOGGER = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ class ConfigModel:
                 if not allow_embedded_images:
                     return False, f"Plan {plan_index} must reference a local image asset"
                 try:
-                    decode_image_data_url(url)
+                    decode_image_data_url_payload(url)
                 except AssetValidationError as err:
                     return False, f"Plan {plan_index}: {err}"
             elif content_type is not None:

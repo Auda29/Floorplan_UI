@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import importlib
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -108,27 +111,65 @@ class AssetReferenceTests(unittest.TestCase):
 
 
 class AssetPersistenceTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _store(directory: str) -> FloorplanAssetStore:
+        class Config:
+            @staticmethod
+            def path(_relative: str) -> str:
+                return directory
+
+        class Hass:
+            config = Config()
+
+            @staticmethod
+            async def async_add_executor_job(function, *args):
+                return await asyncio.to_thread(function, *args)
+
+        return FloorplanAssetStore(Hass())
+
     async def test_assets_are_content_addressed_and_deduplicated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-
-            class Config:
-                @staticmethod
-                def path(_relative: str) -> str:
-                    return directory
-
-            class Hass:
-                config = Config()
-
-                @staticmethod
-                async def async_add_executor_job(function, *args):
-                    return await asyncio.to_thread(function, *args)
-
-            store = FloorplanAssetStore(Hass())
+            store = self._store(directory)
             first = await store.async_store(PNG, "image/png")
             second = await store.async_store(PNG, "image/png")
 
             self.assertEqual(first, second)
             self.assertTrue(store.path_for(first.asset_id, first.content_type).is_file())
+
+    async def test_raw_image_validation_runs_once_outside_the_event_loop(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            event_loop_thread = threading.get_ident()
+            validation_threads: list[int] = []
+            original_validate = ASSET_MODULE.validate_image_bytes
+
+            def track_validation(data: bytes, content_type: str) -> None:
+                validation_threads.append(threading.get_ident())
+                original_validate(data, content_type)
+
+            with patch.object(ASSET_MODULE, "validate_image_bytes", side_effect=track_validation):
+                await store.async_store(PNG, "image/png")
+
+            self.assertEqual(1, len(validation_threads))
+            self.assertNotEqual(event_loop_thread, validation_threads[0])
+
+    async def test_legacy_data_url_is_decoded_once_outside_the_event_loop(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = self._store(directory)
+            event_loop_thread = threading.get_ident()
+            validation_threads: list[int] = []
+            original_validate = ASSET_MODULE.validate_image_bytes
+            data_url = f"data:image/png;base64,{base64.b64encode(PNG).decode('ascii')}"
+
+            def track_validation(data: bytes, content_type: str) -> None:
+                validation_threads.append(threading.get_ident())
+                original_validate(data, content_type)
+
+            with patch.object(ASSET_MODULE, "validate_image_bytes", side_effect=track_validation):
+                await store.async_store_data_url(data_url)
+
+            self.assertEqual(1, len(validation_threads))
+            self.assertNotEqual(event_loop_thread, validation_threads[0])
 
 
 class AssetGarbageCollectionTests(unittest.IsolatedAsyncioTestCase):

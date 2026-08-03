@@ -161,6 +161,7 @@ class FloorplanStore(ConfigModel):
         for plan_index, plan in enumerate(config.get("plans", [])):
             background = plan.get("background", {})
             if allow_embedded_images and background.get("url"):
+                await self._asset_store.async_validate_data_url(background["url"])
                 continue
             asset_id = background.get("asset_id")
             content_type = background.get("content_type")

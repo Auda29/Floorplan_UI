@@ -109,6 +109,13 @@ def validate_image_bytes(data: bytes, content_type: str) -> None:
 
 def decode_image_data_url(data_url: str) -> tuple[bytes, str]:
     """Decode and validate a PNG/JPEG data URL."""
+    data, content_type = decode_image_data_url_payload(data_url)
+    validate_image_bytes(data, content_type)
+    return data, content_type
+
+
+def decode_image_data_url_payload(data_url: str) -> tuple[bytes, str]:
+    """Decode a structurally valid PNG/JPEG data URL without opening the image."""
     match = _DATA_URL_PATTERN.fullmatch(data_url)
     if match is None:
         raise AssetValidationError("The embedded image is not a valid PNG/JPEG data URL")
@@ -123,8 +130,19 @@ def decode_image_data_url(data_url: str) -> tuple[bytes, str]:
         data = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError) as err:
         raise AssetValidationError("The embedded image contains invalid base64 data") from err
-    validate_image_bytes(data, content_type)
     return data, content_type
+
+
+def _validate_and_hash_image(data: bytes, content_type: str) -> str:
+    """Validate and hash image bytes in one executor operation."""
+    validate_image_bytes(data, content_type)
+    return hashlib.sha256(data).hexdigest()
+
+
+def _decode_validate_and_hash_data_url(data_url: str) -> tuple[bytes, str, str]:
+    """Decode, validate, and hash an embedded image exactly once."""
+    data, content_type = decode_image_data_url(data_url)
+    return data, content_type, hashlib.sha256(data).hexdigest()
 
 
 def is_asset_id(value: object) -> TypeGuard[str]:
@@ -166,8 +184,20 @@ class FloorplanAssetStore:
 
     async def async_store(self, data: bytes, content_type: str) -> AssetReference:
         """Validate and atomically persist an image."""
-        validate_image_bytes(data, content_type)
-        asset_id = hashlib.sha256(data).hexdigest()
+        asset_id = await self._hass.async_add_executor_job(
+            _validate_and_hash_image,
+            data,
+            content_type,
+        )
+        return await self._async_store_validated(data, content_type, asset_id)
+
+    async def _async_store_validated(
+        self,
+        data: bytes,
+        content_type: str,
+        asset_id: str,
+    ) -> AssetReference:
+        """Persist bytes that were already fully decoded and validated."""
         reference = AssetReference(asset_id, content_type)
         path = self.path_for(reference.asset_id, reference.content_type)
 
@@ -178,8 +208,15 @@ class FloorplanAssetStore:
 
     async def async_store_data_url(self, data_url: str) -> AssetReference:
         """Decode and persist a legacy embedded image."""
-        data, content_type = decode_image_data_url(data_url)
-        return await self.async_store(data, content_type)
+        data, content_type, asset_id = await self._hass.async_add_executor_job(
+            _decode_validate_and_hash_data_url,
+            data_url,
+        )
+        return await self._async_store_validated(data, content_type, asset_id)
+
+    async def async_validate_data_url(self, data_url: str) -> None:
+        """Fully validate an embedded image without blocking the event loop."""
+        await self._hass.async_add_executor_job(decode_image_data_url, data_url)
 
     async def async_exists(self, asset_id: str, content_type: str) -> bool:
         """Return whether an asset reference resolves to a file."""

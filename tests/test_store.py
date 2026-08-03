@@ -292,6 +292,7 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         class AssetStore:
             def __init__(self) -> None:
                 self.collected: list[set[str]] = []
+                self.validated_data_urls: list[str] = []
 
             @staticmethod
             async def async_exists(asset_id: str, content_type: str) -> bool:
@@ -300,6 +301,9 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
             async def async_collect_garbage(self, referenced: set[str]) -> list[str]:
                 self.collected.append(referenced)
                 return []
+
+            async def async_validate_data_url(self, data_url: str) -> None:
+                self.validated_data_urls.append(data_url)
 
         self.asset_store = AssetStore()
         self.store._asset_store = self.asset_store
@@ -334,6 +338,17 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(1, updated["revision"])
         self.assertEqual(1, self.store._data["revision"])
+
+    async def test_import_validation_delegates_embedded_image_decoding(self) -> None:
+        config = valid_config()
+        background = config["plans"][0]["background"]
+        del background["asset_id"]
+        del background["content_type"]
+        background["url"] = "data:image/png;base64,iVBORw0KGgp1bml0LXRlc3Q="
+
+        await self.store.async_validate_config(config, allow_embedded_images=True)
+
+        self.assertEqual([background["url"]], self.asset_store.validated_data_urls)
 
     async def test_stale_update_is_rejected(self) -> None:
         await self.store.async_update_config(valid_config(), 0)
