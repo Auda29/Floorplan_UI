@@ -9,7 +9,7 @@ import math
 from typing import Any, TypeGuard
 
 from .asset_store import AssetValidationError, decode_image_data_url_payload, is_asset_id
-from .const import CONFIG_VERSION, MAX_CONFIG_SIZE_BYTES
+from .const import CONFIG_VERSION, MAX_CONFIG_SIZE_BYTES, MAX_POLYGON_COORDINATES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -185,6 +185,7 @@ class ConfigModel:
                     if (
                         not isinstance(points, list)
                         or len(points) < 6
+                        or len(points) > MAX_POLYGON_COORDINATES
                         or len(points) % 2
                         or not all(ConfigModel._is_finite_number(point) for point in points)
                     ):

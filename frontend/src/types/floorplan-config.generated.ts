@@ -81,8 +81,9 @@ export interface PolygonShape {
   y?: number;
   /**
    * @minItems 6
+   * @maxItems 2000
    */
-  points: [number, number, number, number, number, number, ...number[]];
+  points: number[];
 }
 export interface AreaStyle {
   fillOpacity: number;
@@ -98,7 +99,7 @@ export interface Marker {
     x: number;
     y: number;
   };
-  icon: string;
+  icon?: string;
   label_mode: "off" | "short" | "full" | "auto";
   tags: string[];
   bind: {
@@ -109,6 +110,7 @@ export interface Marker {
     tap?: "more-info" | "toggle" | "none";
     [k: string]: unknown;
   };
+  [k: string]: unknown;
 }
 export interface View {
   id: string;

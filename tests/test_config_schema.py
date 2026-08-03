@@ -27,6 +27,60 @@ class ConfigSchemaContractTests(unittest.TestCase):
 
         self.validator.validate(normalized)
 
+    def test_schema_rejects_inputs_rejected_by_backend(self) -> None:
+        cases: list[tuple[str, dict]] = []
+
+        missing_content_type = valid_config()
+        del missing_content_type["plans"][0]["background"]["content_type"]
+        cases.append(("asset without content type", missing_content_type))
+
+        odd_polygon = valid_config()
+        odd_polygon["plans"][0]["areas"] = [
+            {
+                "id": "odd-polygon",
+                "area_id": "",
+                "shape": {"type": "polygon", "points": [0, 0, 10, 0, 10, 10, 0]},
+                "tags": [],
+                "style": {"fillOpacity": 0.4, "strokeWidth": 2},
+            }
+        ]
+        cases.append(("odd polygon coordinate count", odd_polygon))
+
+        excessive_polygon = valid_config()
+        excessive_polygon["plans"][0]["areas"] = [
+            {
+                "id": "excessive-polygon",
+                "area_id": "",
+                "shape": {"type": "polygon", "points": [0, 0] * 1_001},
+                "tags": [],
+                "style": {"fillOpacity": 0.4, "strokeWidth": 2},
+            }
+        ]
+        cases.append(("excessive polygon coordinate count", excessive_polygon))
+
+        empty_attribute = valid_config()
+        empty_attribute["plans"][0]["markers"][0]["bind"]["primary"] = {
+            "source": "attr",
+            "attr": "",
+        }
+        cases.append(("empty attribute binding", empty_attribute))
+
+        for name, config in cases:
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    FloorplanStore.validate_and_normalize(config)
+                self.assertFalse(self.validator.is_valid(config))
+
+    def test_backend_accepted_marker_extensions_match_schema(self) -> None:
+        config = valid_config()
+        marker = config["plans"][0]["markers"][0]
+        marker.pop("icon")
+        marker["future_extension"] = {"enabled": True}
+
+        normalized = FloorplanStore.validate_and_normalize(config)
+
+        self.validator.validate(normalized)
+
     def test_schema_version_matches_python_and_typescript_constants(self) -> None:
         python_constants = (ROOT / "custom_components" / "floorplan_ui" / "const.py").read_text(
             encoding="utf-8"
