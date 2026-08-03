@@ -10,14 +10,12 @@ from homeassistant.config_entries import ConfigFlowResult
 from .const import DOMAIN
 
 
-class FloorplanUIConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class FloorplanUIConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Create the single Floorplan UI config entry."""
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle setup initiated by the user."""
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")

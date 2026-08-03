@@ -1,0 +1,2 @@
+# Generated minified bundle may contain intentional whitespace inside string literals.
+custom_components/floorplan_ui/frontend/floorplan-ui.js -whitespace

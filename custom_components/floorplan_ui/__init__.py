@@ -56,9 +56,7 @@ async def _async_register_panel(hass: HomeAssistant) -> bool:
                 "name": "floorplan-ui-panel",
                 "embed_iframe": False,
                 "trust_external": False,
-                "module_url": (
-                    f"{STATIC_URL}/floorplan-ui.js?v={INTEGRATION_VERSION}"
-                ),
+                "module_url": (f"{STATIC_URL}/floorplan-ui.js?v={INTEGRATION_VERSION}"),
             }
         },
         require_admin=False,
