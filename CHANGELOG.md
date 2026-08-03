@@ -6,6 +6,41 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Beta hardening
+
+- Validate legacy container structure before migration and reject damaged imports
+  as controlled `invalid_config` errors without mutating submitted data.
+- Fully decode PNG/JPEG uploads with Pillow and enforce MIME, format, file-size,
+  dimension, pixel-count, and decompression-bomb limits.
+- Stream request bodies with a hard 4 MB limit instead of reading unbounded
+  uploads into memory.
+- Add reference-aware asset garbage collection with managed filename checks, a
+  seven-day grace period, post-save ordering, and per-file fault isolation.
+- Add a Draft 2020-12 configuration schema and generate central TypeScript
+  configuration types from it.
+- Add EN/DE localization, responsive narrow-mode touch targets, pinch zoom,
+  keyboard actions, live regions, focus states, and an accessible canvas list.
+
+### Tests and CI
+
+- Expand backend regression coverage for malformed migrations, complete image
+  decoding, bounded uploads, asset references, and garbage-collection ordering.
+- Add component-level panel and Konva tests for permissions, upload/save/reload,
+  filters, actions, geometry paths, and touch zoom.
+- Add a real Chromium production-bundle smoke covering upload, save, edit, and
+  remount/reload.
+- Add pinned Python development dependencies, Ruff, Mypy, branch-aware coverage
+  with a 55% baseline gate, coverage artifacts, schema-drift checks, and pinned
+  GitHub Action commits.
+
+### Changed
+
+- Extract configuration migration/model logic from the backend store and move
+  editor, dialog, style, stage, and rendering responsibilities out of the panel
+  incrementally while retaining configuration compatibility.
+- Keep the public version at `0.1.2` until independent review and the final pushed
+  GitHub Actions run pass on the release commit.
+
 ## [0.1.2] - 2026-07-31
 
 ### Added

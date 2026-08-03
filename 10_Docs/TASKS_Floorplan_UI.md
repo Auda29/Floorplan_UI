@@ -1,5 +1,28 @@
 ## Floorplan UI – Implementation Status & Task List
 
+### Beta-hardening status (2026-08-03)
+
+Completed and exercised with real tests:
+
+- migration-before-validation hardening for malformed legacy containers
+- complete PNG/JPEG decoding, bounded upload streaming, and asset garbage collection
+- a shared versioned JSON Schema with generated TypeScript types
+- panel, renderer, upload/save/reload, touch-zoom, and Chromium production-bundle tests
+- Ruff, Python formatting, Mypy, branch-aware coverage, and pinned CI actions
+- EN/DE localization foundations, responsive `narrow` mode, pinch zoom, keyboard
+  actions, and baseline accessibility
+- local minimum/current Home Assistant matrix runs, Hassfest, the published-main
+  HACS baseline, reproducible bundle verification, and six logical local commits
+
+Still required before a beta release:
+
+- perform an independent review and resolve its findings
+- push the branch and confirm GitHub Actions, including HACS against the branch
+- continue behavior-preserving decomposition of the largest panel/renderer modules
+
+The older detailed inventory below remains as history and backlog. If a status
+conflicts with this section, this section takes precedence.
+
 ### Current implementation status (Jul 2026)
 
 - **Backend (Home Assistant custom component)**
