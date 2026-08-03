@@ -10,7 +10,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .asset_store import FloorplanAssetStore
+from .asset_store import FloorplanAssetStore, collect_referenced_asset_ids
 from .config_model import ConfigModel, default_config
 from .const import STORAGE_KEY, STORAGE_VERSION
 
@@ -106,6 +106,12 @@ class FloorplanStore(ConfigModel):
             await self._async_validate_asset_references(normalized)
             normalized["revision"] = current_revision + 1
             await self.async_save(normalized)
+            try:
+                await self._asset_store.async_collect_garbage(
+                    collect_referenced_asset_ids(normalized)
+                )
+            except Exception as err:  # Garbage collection must never roll back a valid save.
+                _LOGGER.warning("Floorplan asset garbage collection failed: %s", err)
             return copy.deepcopy(normalized)
 
     async def async_validate_config(

@@ -290,11 +290,19 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         self.store._update_lock = asyncio.Lock()
 
         class AssetStore:
+            def __init__(self) -> None:
+                self.collected: list[set[str]] = []
+
             @staticmethod
             async def async_exists(asset_id: str, content_type: str) -> bool:
                 return asset_id == "a" * 64 and content_type == "image/png"
 
-        self.store._asset_store = AssetStore()
+            async def async_collect_garbage(self, referenced: set[str]) -> list[str]:
+                self.collected.append(referenced)
+                return []
+
+        self.asset_store = AssetStore()
+        self.store._asset_store = self.asset_store
 
         async def async_load(instance):
             return instance._data
@@ -306,6 +314,22 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         self.store.async_save = types.MethodType(async_save, self.store)
 
     async def test_update_increments_revision(self) -> None:
+        updated = await self.store.async_update_config(valid_config(), 0)
+
+        self.assertEqual(1, updated["revision"])
+        self.assertEqual(1, self.store._data["revision"])
+
+    async def test_successful_update_collects_only_after_persisting_references(self) -> None:
+        await self.store.async_update_config(valid_config(), 0)
+
+        self.assertEqual([{"a" * 64}], self.asset_store.collected)
+
+    async def test_garbage_collection_failure_does_not_undo_saved_config(self) -> None:
+        async def fail_collection(_referenced: set[str]) -> list[str]:
+            raise OSError("disk busy")
+
+        self.asset_store.async_collect_garbage = fail_collection
+
         updated = await self.store.async_update_config(valid_config(), 0)
 
         self.assertEqual(1, updated["revision"])

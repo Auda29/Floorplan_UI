@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 from http import HTTPStatus
 
 import pytest
@@ -18,7 +19,9 @@ pytestmark = [
     pytest.mark.usefixtures("enable_custom_integrations"),
 ]
 
-PNG = b"\x89PNG\r\n\x1a\nintegration-test"
+PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAAFUlEQVR4nGP8////fwYkwMSABjAEAMIKBALFMvzuAAAAAElFTkSuQmCC"
+)
 
 
 async def _setup_yaml(hass) -> None:

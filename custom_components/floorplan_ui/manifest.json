@@ -8,7 +8,7 @@
   "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Auda29/Floorplan_UI/issues",
-  "requirements": [],
+  "requirements": ["Pillow>=10.0.0,<13.0.0"],
   "single_config_entry": true,
   "version": "0.1.2"
 }
