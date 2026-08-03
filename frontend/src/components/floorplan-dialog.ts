@@ -14,6 +14,7 @@ export type PanelDialogResult = string | boolean | null;
 
 export class FloorplanDialog extends LitElement {
   @property({ attribute: false }) public dialog: PanelDialog | null = null;
+  @property() public cancelLabel = "Cancel";
   @state() private _value = "";
 
   static styles = css`
@@ -135,7 +136,7 @@ export class FloorplanDialog extends LitElement {
               `
             : nothing}
           <div class="actions">
-            <button type="button" @click=${() => this._resolve(null)}>Cancel</button>
+            <button type="button" @click=${() => this._resolve(null)}>${this.cancelLabel}</button>
             <button
               type="button"
               class=${dialog.destructive ? "destructive" : ""}

@@ -20,6 +20,7 @@ import type {
   View,
 } from "../types/home-assistant";
 import { defaultTagsForEntity } from "../lib/marker-utils";
+import { createLocalizer } from "../lib/i18n";
 import {
   CURRENT_CONFIG_VERSION,
   errorCode,
@@ -113,7 +114,7 @@ export class FloorplanPanel extends LitElement {
         if (this._config) {
           this._config = { ...this._config, revision };
         }
-        this._setNotice("Changes saved.");
+        this._setNotice(this._t("panel.changesSaved"));
       },
     }
   );
@@ -125,6 +126,10 @@ export class FloorplanPanel extends LitElement {
 
   private get _canEdit(): boolean {
     return this.hass?.user?.is_admin === true;
+  }
+
+  private get _t() {
+    return createLocalizer(this.hass?.language);
   }
 
   static styles = floorplanPanelStyles;
@@ -171,7 +176,7 @@ export class FloorplanPanel extends LitElement {
       };
       this._saveQueue.reset(0);
       this._history.reset();
-      this._setError("Floorplan configuration could not be loaded.");
+      this._setError(this._t("panel.loadError"));
     }
     this._loading = false;
   }
@@ -223,13 +228,11 @@ export class FloorplanPanel extends LitElement {
     if (status.state !== "failed") return;
     if (errorCode(status.error) === "config_conflict") {
       this._saveConflict = true;
-      this._setError(
-        "Save conflict: this floorplan changed in another session. Reload to continue; local unsaved changes will be replaced."
-      );
+      this._setError(this._t("panel.conflict"));
       return;
     }
     this._saveConflict = false;
-    this._setError("Changes could not be saved. Your local changes are still available.");
+    this._setError(this._t("panel.saveFailed"));
   }
 
   protected updated(changedProps: Map<string, unknown>) {
@@ -284,7 +287,7 @@ export class FloorplanPanel extends LitElement {
       kind: "text",
       title,
       value,
-      confirmLabel: "Save",
+      confirmLabel: this._t("dialog.save"),
       destructive: false,
     };
     void this.updateComplete.then(() => {
@@ -297,13 +300,13 @@ export class FloorplanPanel extends LitElement {
 
   private _askConfirm(
     message: string,
-    confirmLabel = "Confirm",
+    confirmLabel = this._t("dialog.confirm"),
     destructive = false
   ): Promise<boolean> {
     this._dialogResolver?.(null);
     this._dialog = {
       kind: "confirm",
-      title: "Please confirm",
+      title: this._t("dialog.confirmTitle"),
       message,
       value: "",
       confirmLabel,
@@ -326,13 +329,7 @@ export class FloorplanPanel extends LitElement {
   }
 
   private async _reloadAfterConflict(): Promise<void> {
-    if (
-      !(await this._askConfirm(
-        "Reload the server version and replace your local unsaved changes?",
-        "Reload",
-        true
-      ))
-    )
+    if (!(await this._askConfirm(this._t("dialog.reloadMessage"), this._t("dialog.reload"), true)))
       return;
     await this._loadConfig();
     this._renderFloorplan();
@@ -341,7 +338,7 @@ export class FloorplanPanel extends LitElement {
   private _initializeStage() {
     const container = this.renderRoot.querySelector(".canvas-wrapper") as HTMLDivElement;
     if (!container) {
-      this._setError("The floorplan canvas could not be initialized.");
+      this._setError(this._t("panel.canvasInitError"));
       return;
     }
 
@@ -435,14 +432,14 @@ export class FloorplanPanel extends LitElement {
         } catch {
           this._backgroundLayer!.destroyChildren();
           this._drawImageErrorState(stageWidth, stageHeight);
-          this._setError("The floorplan image could not be rendered.");
+          this._setError(this._t("panel.imageRenderError"));
         }
       };
       imageObj.onerror = () => {
         if (generation !== this._renderGeneration) return;
         this._backgroundLayer!.destroyChildren();
         this._drawImageErrorState(stageWidth, stageHeight);
-        this._setError("The floorplan image could not be loaded.");
+        this._setError(this._t("panel.imageLoadError"));
       };
       imageObj.src = plan.background.url;
     } else if (plan) {
@@ -485,7 +482,7 @@ export class FloorplanPanel extends LitElement {
     const plan = this._config.plans.find((candidate) => candidate.plan_id === planId);
     if (!plan) return;
 
-    const newName = await this._askText("Rename plan", plan.name);
+    const newName = await this._askText(this._t("dialog.renamePlan"), plan.name);
     if (!newName) return;
 
     const trimmed = newName.trim();
@@ -498,7 +495,11 @@ export class FloorplanPanel extends LitElement {
     if (!this._canEdit || !this._config || !this._currentPlanId) return;
     const planId = this._currentPlanId;
     if (
-      !(await this._askConfirm("Delete current plan? This cannot be undone.", "Delete plan", true))
+      !(await this._askConfirm(
+        this._t("dialog.deletePlanMessage"),
+        this._t("editor.deletePlan"),
+        true
+      ))
     )
       return;
 
@@ -569,7 +570,7 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _addAreaShape(type: "rect" | "polygon") {
-    if (!this._canEdit || !this._config || !this._stage) return;
+    if (!this._canEdit || !this._config) return;
     const plan = this._getCurrentPlan();
     if (!plan) return;
 
@@ -601,7 +602,7 @@ export class FloorplanPanel extends LitElement {
     } catch {
       this._haAreas = [];
       this._haEntities = [];
-      this._setError("Home Assistant areas and entities could not be loaded.");
+      this._setError(this._t("panel.registryLoadError"));
     }
   }
 
@@ -649,7 +650,11 @@ export class FloorplanPanel extends LitElement {
     const plan = this._getCurrentPlan();
     if (!plan) return;
     if (
-      !(await this._askConfirm("Delete selected area? This cannot be undone.", "Delete area", true))
+      !(await this._askConfirm(
+        this._t("dialog.deleteAreaMessage"),
+        this._t("editor.deleteArea"),
+        true
+      ))
     )
       return;
 
@@ -712,7 +717,7 @@ export class FloorplanPanel extends LitElement {
 
     const registryEntry = this._haEntities.find((entity) => entity.entity_id === entityId);
     if (!registryEntry && !this.hass.states[entityId]) {
-      this._setError("Select an existing Home Assistant entity.");
+      this._setError(this._t("panel.selectExistingEntity"));
       return;
     }
 
@@ -848,7 +853,14 @@ export class FloorplanPanel extends LitElement {
   private async _deleteSelectedMarker() {
     if (!this._canEdit || !this._config || !this._selectedMarkerId) return;
     const plan = this._getCurrentPlan();
-    if (!plan || !(await this._askConfirm("Delete selected marker?", "Delete marker", true)))
+    if (
+      !plan ||
+      !(await this._askConfirm(
+        this._t("dialog.deleteMarkerMessage"),
+        this._t("editor.deleteMarker"),
+        true
+      ))
+    )
       return;
 
     void this._commitConfig(removeMarker(this._config, plan.plan_id, this._selectedMarkerId));
@@ -866,6 +878,33 @@ export class FloorplanPanel extends LitElement {
     );
   }
 
+  private _selectCanvasObject(kind: "area" | "marker", id: string): void {
+    if (!this._canEdit || !this._editMode) return;
+    this._selectedAreaId = kind === "area" ? id : null;
+    this._selectedMarkerId = kind === "marker" ? id : null;
+    this._renderAreas(this._getCurrentPlan());
+    this._syncCanvasInteractivity();
+    this.requestUpdate();
+  }
+
+  private _onCanvasKeydown(event: KeyboardEvent): void {
+    if (!this._canEdit || !this._editMode) return;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      if (event.shiftKey) this._redo();
+      else this._undo();
+      return;
+    }
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
+    if (this._selectedAreaId) {
+      event.preventDefault();
+      void this._deleteSelectedArea();
+    } else if (this._selectedMarkerId) {
+      event.preventDefault();
+      void this._deleteSelectedMarker();
+    }
+  }
+
   private _getCurrentView(): View | undefined {
     return this._config?.views.find((view) => view.id === this._currentView);
   }
@@ -876,7 +915,7 @@ export class FloorplanPanel extends LitElement {
 
   private async _addView() {
     if (!this._canEdit || !this._config) return;
-    const name = (await this._askText("New view name"))?.trim();
+    const name = (await this._askText(this._t("dialog.newView")))?.trim();
     if (!name) return;
 
     const view = createView(name, this._config.views);
@@ -891,7 +930,7 @@ export class FloorplanPanel extends LitElement {
     if (!this._canEdit || !this._config) return;
     const view = this._getCurrentView();
     if (!view) return;
-    const name = (await this._askText("Rename view", view.name))?.trim();
+    const name = (await this._askText(this._t("dialog.renameView"), view.name))?.trim();
     if (!name || name === view.name) return;
     void this._commitConfig(
       updateView(this._config, view.id, (candidate) => ({ ...candidate, name }))
@@ -907,7 +946,9 @@ export class FloorplanPanel extends LitElement {
   private _setDefaultView() {
     if (!this._canEdit || !this._config) return;
     void this._commitConfig({ ...this._config, default_view: this._currentView });
-    this._setNotice(`“${this._getCurrentView()?.name ?? this._currentView}” is the default view.`);
+    this._setNotice(
+      this._t("panel.defaultView", { name: this._getCurrentView()?.name ?? this._currentView })
+    );
   }
 
   private async _deleteCurrentView() {
@@ -918,7 +959,14 @@ export class FloorplanPanel extends LitElement {
       this._config.views.length <= 1
     )
       return;
-    if (!(await this._askConfirm("Delete the current view?", "Delete view", true))) return;
+    if (
+      !(await this._askConfirm(
+        this._t("dialog.deleteViewMessage"),
+        this._t("editor.deleteView"),
+        true
+      ))
+    )
+      return;
 
     const result = removeView(this._config, this._currentView);
     if (!result) return;
@@ -1060,9 +1108,9 @@ export class FloorplanPanel extends LitElement {
       link.download = `floorplan-ui-config-v${this._config.version}.json`;
       link.click();
       URL.revokeObjectURL(url);
-      this._setNotice("Configuration and images exported.");
+      this._setNotice(this._t("panel.exported"));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Export failed.";
+      const message = error instanceof Error ? error.message : this._t("panel.exportFailed");
       this._setError(message);
     }
   }
@@ -1079,7 +1127,7 @@ export class FloorplanPanel extends LitElement {
     input.value = "";
     if (!file) return;
     if (file.size > MAX_CONFIG_FILE_BYTES) {
-      this._setError("The configuration file must not exceed 20 MB.");
+      this._setError(this._t("panel.configTooLarge"));
       return;
     }
 
@@ -1095,7 +1143,10 @@ export class FloorplanPanel extends LitElement {
       const planCount = Array.isArray(imported.plans) ? imported.plans.length : 0;
       const viewCount = Array.isArray(imported.views) ? imported.views.length : 0;
       if (
-        !(await this._askConfirm(`Import ${planCount} plan(s) and ${viewCount} view(s)?`, "Import"))
+        !(await this._askConfirm(
+          this._t("dialog.importMessage", { plans: planCount, views: viewCount }),
+          this._t("dialog.import")
+        ))
       )
         return;
 
@@ -1111,10 +1162,10 @@ export class FloorplanPanel extends LitElement {
       const saved = await this._commitConfig(validated);
       if (!saved) return;
       this._renderFloorplan();
-      this._setNotice("Configuration imported and saved.");
+      this._setNotice(this._t("panel.imported"));
     } catch (err) {
-      const message = err instanceof Error ? err.message : "The file is not a valid configuration.";
-      this._setError(`Import failed: ${message}`);
+      const message = err instanceof Error ? err.message : this._t("panel.invalidConfig");
+      this._setError(this._t("panel.importFailed", { message }));
     }
   }
 
@@ -1125,11 +1176,11 @@ export class FloorplanPanel extends LitElement {
     input.value = "";
     if (!file) return;
     if (!["image/png", "image/jpeg"].includes(file.type)) {
-      this._setError("Only PNG and JPEG floorplans are supported.");
+      this._setError(this._t("panel.imageTypeError"));
       return;
     }
     if (file.size > MAX_IMAGE_FILE_BYTES) {
-      this._setError("The floorplan image must not exceed 4 MB.");
+      this._setError(this._t("panel.imageTooLarge"));
       return;
     }
 
@@ -1146,8 +1197,7 @@ export class FloorplanPanel extends LitElement {
         height: image.height,
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "The selected image could not be uploaded.";
+      const message = error instanceof Error ? error.message : this._t("panel.imageUploadFailed");
       this._setError(message);
     } finally {
       image?.close();
@@ -1258,7 +1308,8 @@ export class FloorplanPanel extends LitElement {
         addMarkerSecondaryBinding: () => this._addMarkerSecondaryBinding(),
         removeMarkerSecondaryBinding: () => this._removeMarkerSecondaryBinding(),
         deleteMarker: () => this._deleteSelectedMarker(),
-      }
+      },
+      this._t
     );
   }
 
@@ -1277,23 +1328,35 @@ export class FloorplanPanel extends LitElement {
     const selectedArea = this._getSelectedArea();
     const selectedMarker = this._getSelectedMarker();
 
+    const t = this._t;
     return html`
-      <div class="container">
+      <div class="container ${this.narrow ? "narrow" : ""}">
         <div class="toolbar">
           <div class="toolbar-left">
-            <h1>Floorplan</h1>
-            <div class="plan-select">
-              <span>Plan:</span>
-              <select @change=${this._selectPlan} .value=${currentPlan?.plan_id ?? ""}>
-                <option value="">${plans.length === 0 ? "No plans" : "Select plan"}</option>
-                ${plans.map((plan) => html`<option value=${plan.plan_id}>${plan.name}</option>`)}
+            <h1>${t("panel.title")}</h1>
+            <label class="plan-select">
+              <span>${t("panel.plan")}</span>
+              <select @change=${this._selectPlan}>
+                <option value="" ?selected=${!currentPlan}>${t("panel.selectPlan")}</option>
+                ${plans.map(
+                  (plan) => html`
+                    <option
+                      value=${plan.plan_id}
+                      ?selected=${currentPlan?.plan_id === plan.plan_id}
+                    >
+                      ${plan.name}
+                    </option>
+                  `
+                )}
               </select>
-            </div>
-            <div class="view-tabs">
+            </label>
+            <div class="view-tabs" role="tablist">
               ${views.map(
                 (view) => html`
                   <button
                     class="view-tab ${this._currentView === view.id ? "active" : ""}"
+                    role="tab"
+                    aria-selected=${this._currentView === view.id ? "true" : "false"}
                     @click=${() => this._setView(view.id)}
                   >
                     ${view.id === this._config?.default_view ? "★ " : ""}${view.name}
@@ -1307,28 +1370,39 @@ export class FloorplanPanel extends LitElement {
               ? html`
                   <button
                     class="edit-toggle ${this._editMode ? "active" : ""}"
+                    aria-pressed=${this._editMode ? "true" : "false"}
                     @click=${this._toggleEditMode}
                   >
-                    ${this._editMode ? "Done" : "Edit"}
+                    ${this._editMode ? t("panel.done") : t("panel.edit")}
                   </button>
                 `
-              : html`<span class="viewer-note">View only</span>`}
+              : html`<span class="viewer-note">${t("panel.viewOnly")}</span>`}
           </div>
         </div>
 
-        ${this._saveState === "pending" ? html`<div class="status">Changes pending…</div>` : ""}
-        ${this._saveState === "saving" ? html`<div class="status">Saving changes…</div>` : ""}
-        ${this._notice ? html`<div class="status">${this._notice}</div>` : ""}
+        ${this._saveState === "pending"
+          ? html`<div class="status" role="status" aria-live="polite">${t("panel.pending")}</div>`
+          : ""}
+        ${this._saveState === "saving"
+          ? html`<div class="status" role="status" aria-live="polite">${t("panel.saving")}</div>`
+          : ""}
+        ${this._notice
+          ? html`<div class="status" role="status" aria-live="polite">${this._notice}</div>`
+          : ""}
         ${this._error
           ? html`
-              <div class="status error">
+              <div class="status error" role="alert">
                 ${this._error}
                 ${this._saveState === "failed"
                   ? this._saveConflict
                     ? html`
-                        <button type="button" @click=${this._reloadAfterConflict}>Reload</button>
+                        <button type="button" @click=${this._reloadAfterConflict}>
+                          ${t("panel.reload")}
+                        </button>
                       `
-                    : html`<button type="button" @click=${this._retrySave}>Retry</button>`
+                    : html`<button type="button" @click=${this._retrySave}>
+                        ${t("panel.retry")}
+                      </button>`
                   : ""}
               </div>
             `
@@ -1340,28 +1414,72 @@ export class FloorplanPanel extends LitElement {
         <input
           type="file"
           class="file-input"
+          aria-label=${t("panel.upload")}
           accept="image/png,image/jpeg"
           @change=${this._handleFileUpload}
         />
         <input
           type="file"
           class="config-file-input"
+          aria-label=${t("editor.import")}
           accept="application/json,.json"
           @change=${this._handleConfigImport}
         />
 
         <div
           class="canvas-container"
+          role="application"
+          tabindex="0"
+          aria-label=${t("panel.canvas")}
+          @keydown=${this._onCanvasKeydown}
           @dragover=${this._onCanvasDragOver}
           @dragleave=${this._onCanvasDragLeave}
           @drop=${this._onCanvasDrop}
         >
           ${this._loading
-            ? html`<div class="loading">Loading...</div>`
+            ? html`<div class="loading" role="status">${t("panel.loading")}</div>`
             : html`<div class="canvas-wrapper"></div>`}
+          <section class="canvas-accessibility" aria-label=${t("panel.objects")}>
+            <ul>
+              ${currentPlan?.areas.map(
+                (area) => html`
+                  <li>
+                    ${this._editMode
+                      ? html`<button
+                          type="button"
+                          aria-pressed=${this._selectedAreaId === area.id ? "true" : "false"}
+                          @click=${() => this._selectCanvasObject("area", area.id)}
+                        >
+                          ${t("panel.areaObject", { id: area.id })}
+                        </button>`
+                      : t("panel.areaObject", { id: area.id })}
+                  </li>
+                `
+              )}
+              ${currentPlan?.markers.map(
+                (marker) => html`
+                  <li>
+                    <button
+                      type="button"
+                      aria-pressed=${this._editMode && this._selectedMarkerId === marker.id
+                        ? "true"
+                        : "false"}
+                      @click=${() =>
+                        this._editMode
+                          ? this._selectCanvasObject("marker", marker.id)
+                          : this._openMoreInfo(marker.entity_id)}
+                    >
+                      ${t("panel.markerObject", { entity: marker.entity_id })}
+                    </button>
+                  </li>
+                `
+              )}
+            </ul>
+          </section>
         </div>
         <floorplan-dialog
           .dialog=${this._dialog}
+          .cancelLabel=${t("dialog.cancel")}
           @floorplan-dialog-resolve=${(event: CustomEvent<PanelDialogResult>) =>
             this._resolveDialog(event.detail)}
         ></floorplan-dialog>

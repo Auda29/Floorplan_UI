@@ -63,6 +63,59 @@ export function createStageController(
     });
   });
 
+  let lastTouchCenter: { x: number; y: number } | null = null;
+  let lastTouchDistance = 0;
+  const resetPinch = (): void => {
+    lastTouchCenter = null;
+    lastTouchDistance = 0;
+    stage.draggable(true);
+  };
+
+  stage.on("touchmove", (event) => {
+    const first = event.evt.touches[0];
+    const second = event.evt.touches[1];
+    if (!first || !second) {
+      resetPinch();
+      return;
+    }
+    event.evt.preventDefault();
+    stage.draggable(false);
+
+    const rect = container.getBoundingClientRect();
+    const firstPoint = { x: first.clientX - rect.left, y: first.clientY - rect.top };
+    const secondPoint = { x: second.clientX - rect.left, y: second.clientY - rect.top };
+    const center = {
+      x: (firstPoint.x + secondPoint.x) / 2,
+      y: (firstPoint.y + secondPoint.y) / 2,
+    };
+    const distance = Math.hypot(secondPoint.x - firstPoint.x, secondPoint.y - firstPoint.y);
+    if (!lastTouchCenter || lastTouchDistance === 0) {
+      lastTouchCenter = center;
+      lastTouchDistance = distance;
+      return;
+    }
+
+    const oldScale = stage.scaleX();
+    const centerPoint = {
+      x: (lastTouchCenter.x - stage.x()) / oldScale,
+      y: (lastTouchCenter.y - stage.y()) / oldScale,
+    };
+    const { minZoom, maxZoom } = options.getZoomLimits();
+    const requestedScale = oldScale * (distance / lastTouchDistance);
+    const scale = Math.max(minZoom, Math.min(maxZoom, requestedScale));
+    stage.scale({ x: scale, y: scale });
+    stage.position({
+      x: center.x - centerPoint.x * scale,
+      y: center.y - centerPoint.y * scale,
+    });
+    lastTouchCenter = center;
+    lastTouchDistance = distance;
+  });
+
+  stage.on("touchend", (event) => {
+    if (event.evt.touches.length < 2) resetPinch();
+  });
+
   const resizeObserver = new ResizeObserver(([entry]) => {
     if (!entry) return;
     const { width, height } = entry.contentRect;
