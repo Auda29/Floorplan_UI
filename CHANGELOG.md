@@ -6,6 +6,8 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0-beta.1] - 2026-08-04
+
 ### Beta hardening
 
 - Validate legacy container structure before migration and reject damaged imports
@@ -40,8 +42,8 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Extract configuration migration/model logic from the backend store and move
   editor, dialog, style, stage, and rendering responsibilities out of the panel
   incrementally while retaining configuration compatibility.
-- Keep the public version at `0.1.2` until independent review and the final pushed
-  GitHub Actions run pass on the release commit.
+- Publish the hardened foundation as the first `0.2.0` beta prerelease after
+  independent review and successful minimum/current Home Assistant CI runs.
 
 ## [0.1.2] - 2026-07-31
 
@@ -120,7 +122,8 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.1...HEAD
+[0.2.0-beta.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.2...v0.2.0-beta.1
 [0.1.2]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Auda29/Floorplan_UI/releases/tag/v0.1.0
