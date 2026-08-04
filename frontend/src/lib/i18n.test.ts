@@ -8,6 +8,9 @@ describe("i18n", () => {
     expect(t("editor.title")).toBe("Grundriss bearbeiten");
     expect(t("editor.planView")).toBe("Plan und Ansichten");
     expect(t("editor.viewOverlay")).toBe("Ansicht und Overlays");
+    expect(t("editor.dragHint")).toBe(
+      "Auf den Grundriss ziehen. Bei Touch kurz halten, dann ziehen."
+    );
     expect(t("panel.changesSaved")).toBe("Änderungen gespeichert.");
     expect(t("dialog.cancel")).toBe("Abbrechen");
     expect(t("dialog.importMessage", { plans: 2, views: 3 })).toBe(

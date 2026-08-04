@@ -54,6 +54,7 @@ export interface FloorplanEditorActions {
   setEntityToAdd(value: string): void;
   addMarker(): void;
   startEntityDrag(entityId: string, event: DragEvent): void;
+  startEntityPointerDrag(entityId: string, event: PointerEvent): void;
   updateViewFilter(filterName: ViewFilterName, event: Event): void;
   updateAreaOverlay(slot: OverlaySlot, field: OverlayField, event: Event): void;
   updateAreaBadges(event: Event): void;
@@ -176,6 +177,8 @@ export function renderFloorplanEditor(
                 class="entity-card"
                 draggable="true"
                 @dragstart=${(event: DragEvent) => actions.startEntityDrag(entity.entity_id, event)}
+                @pointerdown=${(event: PointerEvent) =>
+                  actions.startEntityPointerDrag(entity.entity_id, event)}
                 title=${t("editor.dragHint")}
               >
                 <strong>${entity.name ?? entity.entity_id}</strong>

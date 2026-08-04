@@ -4,7 +4,7 @@ DOMAIN = "floorplan_ui"
 STORAGE_KEY = "floorplan_ui.config"
 STORAGE_VERSION = 1
 CONFIG_VERSION = 3
-INTEGRATION_VERSION = "0.2.0-beta.2"
+INTEGRATION_VERSION = "0.2.0-beta.3"
 
 PANEL_URL = "floorplan-ui"
 PANEL_TITLE = "Floorplan"

@@ -4,7 +4,7 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** public beta prerelease (current release: `0.2.0-beta.1`).
+> **Status:** public beta prerelease (current release: `0.2.0-beta.3`).
 > Back up production data while testing `0.x` prereleases.
 
 ## Current capabilities
