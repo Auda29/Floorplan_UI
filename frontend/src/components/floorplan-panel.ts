@@ -1407,75 +1407,77 @@ export class FloorplanPanel extends LitElement {
               </div>
             `
           : ""}
-        ${this._editMode
-          ? this._renderEditor(currentPlan, currentView, selectedArea, selectedMarker)
-          : ""}
+        <div class="workspace ${this._editMode ? "editing" : ""}">
+          ${this._editMode
+            ? this._renderEditor(currentPlan, currentView, selectedArea, selectedMarker)
+            : ""}
 
-        <input
-          type="file"
-          class="file-input"
-          aria-label=${t("panel.upload")}
-          accept="image/png,image/jpeg"
-          @change=${this._handleFileUpload}
-        />
-        <input
-          type="file"
-          class="config-file-input"
-          aria-label=${t("editor.import")}
-          accept="application/json,.json"
-          @change=${this._handleConfigImport}
-        />
+          <input
+            type="file"
+            class="file-input"
+            aria-label=${t("panel.upload")}
+            accept="image/png,image/jpeg"
+            @change=${this._handleFileUpload}
+          />
+          <input
+            type="file"
+            class="config-file-input"
+            aria-label=${t("editor.import")}
+            accept="application/json,.json"
+            @change=${this._handleConfigImport}
+          />
 
-        <div
-          class="canvas-container"
-          role="application"
-          tabindex="0"
-          aria-label=${t("panel.canvas")}
-          @keydown=${this._onCanvasKeydown}
-          @dragover=${this._onCanvasDragOver}
-          @dragleave=${this._onCanvasDragLeave}
-          @drop=${this._onCanvasDrop}
-        >
-          ${this._loading
-            ? html`<div class="loading" role="status">${t("panel.loading")}</div>`
-            : html`<div class="canvas-wrapper"></div>`}
-          <section class="canvas-accessibility" aria-label=${t("panel.objects")}>
-            <ul>
-              ${currentPlan?.areas.map(
-                (area) => html`
-                  <li>
-                    ${this._editMode
-                      ? html`<button
-                          type="button"
-                          aria-pressed=${this._selectedAreaId === area.id ? "true" : "false"}
-                          @click=${() => this._selectCanvasObject("area", area.id)}
-                        >
-                          ${t("panel.areaObject", { id: area.id })}
-                        </button>`
-                      : t("panel.areaObject", { id: area.id })}
-                  </li>
-                `
-              )}
-              ${currentPlan?.markers.map(
-                (marker) => html`
-                  <li>
-                    <button
-                      type="button"
-                      aria-pressed=${this._editMode && this._selectedMarkerId === marker.id
-                        ? "true"
-                        : "false"}
-                      @click=${() =>
-                        this._editMode
-                          ? this._selectCanvasObject("marker", marker.id)
-                          : this._openMoreInfo(marker.entity_id)}
-                    >
-                      ${t("panel.markerObject", { entity: marker.entity_id })}
-                    </button>
-                  </li>
-                `
-              )}
-            </ul>
-          </section>
+          <div
+            class="canvas-container"
+            role="application"
+            tabindex="0"
+            aria-label=${t("panel.canvas")}
+            @keydown=${this._onCanvasKeydown}
+            @dragover=${this._onCanvasDragOver}
+            @dragleave=${this._onCanvasDragLeave}
+            @drop=${this._onCanvasDrop}
+          >
+            ${this._loading
+              ? html`<div class="loading" role="status">${t("panel.loading")}</div>`
+              : html`<div class="canvas-wrapper"></div>`}
+            <section class="canvas-accessibility" aria-label=${t("panel.objects")}>
+              <ul>
+                ${currentPlan?.areas.map(
+                  (area) => html`
+                    <li>
+                      ${this._editMode
+                        ? html`<button
+                            type="button"
+                            aria-pressed=${this._selectedAreaId === area.id ? "true" : "false"}
+                            @click=${() => this._selectCanvasObject("area", area.id)}
+                          >
+                            ${t("panel.areaObject", { id: area.id })}
+                          </button>`
+                        : t("panel.areaObject", { id: area.id })}
+                    </li>
+                  `
+                )}
+                ${currentPlan?.markers.map(
+                  (marker) => html`
+                    <li>
+                      <button
+                        type="button"
+                        aria-pressed=${this._editMode && this._selectedMarkerId === marker.id
+                          ? "true"
+                          : "false"}
+                        @click=${() =>
+                          this._editMode
+                            ? this._selectCanvasObject("marker", marker.id)
+                            : this._openMoreInfo(marker.entity_id)}
+                      >
+                        ${t("panel.markerObject", { entity: marker.entity_id })}
+                      </button>
+                    </li>
+                  `
+                )}
+              </ul>
+            </section>
+          </div>
         </div>
         <floorplan-dialog
           .dialog=${this._dialog}
