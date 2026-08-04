@@ -5,6 +5,9 @@ describe("i18n", () => {
   it("uses German for Home Assistant German locales", () => {
     const t = createLocalizer("de-DE");
     expect(t("panel.edit")).toBe("Bearbeiten");
+    expect(t("editor.title")).toBe("Grundriss bearbeiten");
+    expect(t("editor.planView")).toBe("Plan und Ansichten");
+    expect(t("editor.viewOverlay")).toBe("Ansicht und Overlays");
     expect(t("panel.changesSaved")).toBe("Änderungen gespeichert.");
     expect(t("dialog.cancel")).toBe("Abbrechen");
     expect(t("dialog.importMessage", { plans: 2, views: 3 })).toBe(

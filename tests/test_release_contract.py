@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class ReleaseContractTests(unittest.TestCase):
     """Keep release metadata and bundled artifacts synchronized."""
 
-    RELEASE_VERSION = "0.2.0-beta.1"
+    RELEASE_VERSION = "0.2.0-beta.2"
 
     def test_release_version_is_expected_beta(self) -> None:
         manifest = json.loads(

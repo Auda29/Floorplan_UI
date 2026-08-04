@@ -5,12 +5,25 @@ export const floorplanPanelStyles = css`
     display: block;
     height: 100%;
     background: var(--primary-background-color, #fafafa);
+    color: var(--primary-text-color, #212121);
   }
 
   .container {
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
+  }
+
+  .workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    flex: 1;
+    min-height: 0;
+  }
+
+  .workspace.editing {
+    grid-template-columns: clamp(320px, 24vw, 390px) minmax(0, 1fr);
   }
 
   .toolbar {
@@ -19,7 +32,7 @@ export const floorplanPanelStyles = css`
     justify-content: space-between;
     padding: 12px 16px;
     background: var(--app-header-background-color, #03a9f4);
-    color: var(--text-primary-color, #fff);
+    color: var(--app-header-text-color, #fff);
     min-height: 48px;
     box-sizing: border-box;
   }
@@ -28,6 +41,7 @@ export const floorplanPanelStyles = css`
     display: flex;
     align-items: center;
     gap: 16px;
+    min-width: 0;
   }
 
   .toolbar-right {
@@ -46,11 +60,15 @@ export const floorplanPanelStyles = css`
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    max-width: 100%;
     color: inherit;
     font-size: 14px;
   }
 
   .plan-select select {
+    min-width: 0;
+    max-width: 100%;
     padding: 4px 8px;
     border-radius: 4px;
     border: none;
@@ -60,9 +78,13 @@ export const floorplanPanelStyles = css`
   .view-tabs {
     display: flex;
     gap: 4px;
+    min-width: 0;
   }
 
   .view-tab {
+    min-width: 0;
+    max-width: min(260px, calc(100vw - 40px));
+    overflow: hidden;
     padding: 6px 12px;
     border: none;
     border-radius: 4px;
@@ -70,7 +92,9 @@ export const floorplanPanelStyles = css`
     color: inherit;
     cursor: pointer;
     font-size: 14px;
+    text-overflow: ellipsis;
     transition: background 0.2s;
+    white-space: nowrap;
   }
 
   .view-tab:hover {
@@ -163,74 +187,214 @@ export const floorplanPanelStyles = css`
     display: none;
   }
 
-  .edit-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: #e8e8e8;
-    border-bottom: 1px solid #ddd;
+  .editor-panel {
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 14px;
+    box-sizing: border-box;
+    border-inline-end: 1px solid var(--divider-color, #d7d7d7);
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
+    scrollbar-gutter: stable;
   }
 
-  .edit-toolbar button {
-    padding: 8px 16px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: #fff;
+  .editor-panel-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0 2px 14px;
+  }
+
+  .editor-panel-header span {
+    color: var(--secondary-text-color, #616161);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .editor-panel-header strong {
+    overflow: hidden;
+    color: var(--primary-text-color, #212121);
+    font-size: 18px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .editor-card {
+    min-width: 0;
+    margin: 0 0 12px;
+    padding: 12px;
+    box-sizing: border-box;
+    border: 1px solid var(--divider-color, #d7d7d7);
+    border-radius: 10px;
+    background: var(--primary-background-color, #fafafa);
+    box-shadow: var(--ha-card-box-shadow, 0 1px 2px rgba(0, 0, 0, 0.08));
+  }
+
+  .editor-card h2,
+  .editor-card h3 {
+    margin: 0 0 10px;
+    color: var(--primary-text-color, #212121);
+    font-size: 14px;
+    line-height: 1.35;
+  }
+
+  details.editor-card {
+    padding: 0;
+  }
+
+  details.editor-card > summary {
+    min-height: 44px;
+    padding: 12px;
+    box-sizing: border-box;
+    color: var(--primary-text-color, #212121);
     cursor: pointer;
     font-size: 14px;
+    font-weight: 600;
   }
 
-  .edit-toolbar button:hover {
-    background: #f0f0f0;
+  details.editor-card[open] > summary {
+    border-bottom: 1px solid var(--divider-color, #d7d7d7);
   }
 
-  .edit-toolbar input,
-  .edit-toolbar select {
-    min-width: 140px;
-    padding: 6px 8px;
-    border: 1px solid #bbb;
-    border-radius: 4px;
-    background: #fff;
+  .editor-card-body {
+    padding: 12px;
   }
 
-  .edit-toolbar .grow {
-    flex: 1;
-    min-width: 180px;
+  .editor-actions,
+  .editor-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .editor-panel button,
+  .editor-panel input,
+  .editor-panel select {
+    min-width: 0;
+    min-height: 40px;
+    box-sizing: border-box;
+    border: 1px solid var(--input-idle-line-color, var(--divider-color, #bdbdbd));
+    border-radius: 6px;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
+    font: inherit;
+  }
+
+  .editor-panel button {
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
+  .editor-panel button:hover:not(:disabled) {
+    border-color: var(--primary-color, #03a9f4);
+    background: var(--secondary-background-color, #f3f3f3);
+  }
+
+  .editor-panel button:disabled {
+    background: var(--secondary-background-color, #eeeeee);
+    color: var(--disabled-text-color, #757575);
+    cursor: not-allowed;
+    opacity: 1;
+  }
+
+  .editor-panel input,
+  .editor-panel select {
+    width: 100%;
+    padding: 7px 9px;
+  }
+
+  .editor-fields label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+    color: var(--secondary-text-color, #616161);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .editor-field-wide {
+    grid-column: 1 / -1;
+  }
+
+  .editor-add-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .editor-helper {
+    display: block;
+    margin: 12px 0 6px;
+    color: var(--secondary-text-color, #616161);
+    font-size: 12px;
   }
 
   .entity-palette {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px;
-    overflow-x: auto;
-    padding: 4px 0;
-    flex: 1;
-    min-width: 240px;
+    max-height: 168px;
+    min-width: 0;
+    overflow-y: auto;
+    padding-inline-end: 3px;
   }
 
   .entity-card {
     display: flex;
+    min-width: 0;
     flex-direction: column;
-    min-width: 180px;
-    max-width: 240px;
-    padding: 7px 10px;
-    border: 1px solid #bbb;
+    padding: 8px 10px;
+    box-sizing: border-box;
+    border: 1px solid var(--divider-color, #bdbdbd);
     border-radius: 6px;
-    background: #fff;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
     cursor: grab;
     font-size: 12px;
     user-select: none;
   }
 
   .entity-card strong,
-  .entity-card span {
+  .entity-card span,
+  .editor-selection-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .entity-card span {
-    color: #666;
+    color: var(--secondary-text-color, #616161);
+  }
+
+  .editor-subsection + .editor-subsection {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--divider-color, #d7d7d7);
+  }
+
+  .editor-selection {
+    border-inline-start: 3px solid var(--primary-color, #03a9f4);
+  }
+
+  .editor-selection-name {
+    display: block;
+    margin: -4px 0 10px;
+    color: var(--secondary-text-color, #616161);
+    font-size: 12px;
+  }
+
+  .editor-danger {
+    border-color: var(--error-color, #db4437) !important;
+    color: var(--error-color, #b3261e) !important;
   }
 
   .canvas-container.drag-target {
@@ -262,6 +426,7 @@ export const floorplanPanelStyles = css`
   button:focus-visible,
   input:focus-visible,
   select:focus-visible,
+  details > summary:focus-visible,
   .canvas-container:focus-visible {
     outline: 3px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
@@ -284,8 +449,7 @@ export const floorplanPanelStyles = css`
   }
 
   .narrow .toolbar,
-  .narrow .toolbar-left,
-  .narrow .edit-toolbar {
+  .narrow .toolbar-left {
     align-items: stretch;
     flex-wrap: wrap;
   }
@@ -295,9 +459,30 @@ export const floorplanPanelStyles = css`
     gap: 8px;
   }
 
+  .narrow .toolbar-left {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .narrow .plan-select {
+    flex: 1 1 220px;
+  }
+
   .narrow .view-tabs {
     width: 100%;
     overflow-x: auto;
+  }
+
+  .narrow .workspace.editing {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 45vh) minmax(400px, 1fr);
+    align-content: start;
+    overflow-y: auto;
+  }
+
+  .narrow .editor-panel {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--divider-color, #d7d7d7);
   }
 
   .narrow button,
@@ -306,20 +491,51 @@ export const floorplanPanelStyles = css`
     min-height: 44px;
   }
 
-  .narrow .edit-toolbar {
-    overflow-x: auto;
-  }
-
   @media (max-width: 900px) {
     .toolbar,
-    .toolbar-left,
-    .edit-toolbar {
+    .toolbar-left {
       align-items: flex-start;
       flex-wrap: wrap;
     }
 
+    .workspace.editing {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: minmax(260px, 45vh) minmax(400px, 1fr);
+      align-content: start;
+      overflow-y: auto;
+    }
+
+    .editor-panel {
+      border-inline-end: 0;
+      border-bottom: 1px solid var(--divider-color, #d7d7d7);
+    }
+
+    .toolbar button,
+    .toolbar select,
+    .editor-panel button,
+    .editor-panel select,
+    .editor-panel input,
+    .editor-panel .entity-card {
+      min-height: 44px;
+    }
+
     .view-tabs {
       flex-wrap: wrap;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .editor-actions,
+    .editor-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .editor-field-wide {
+      grid-column: auto;
+    }
+
+    .editor-add-row {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 `;
