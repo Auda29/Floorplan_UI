@@ -13,6 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 class ReleaseContractTests(unittest.TestCase):
     """Keep release metadata and bundled artifacts synchronized."""
 
+    RELEASE_VERSION = "0.2.0-beta.1"
+
+    def test_release_version_is_expected_beta(self) -> None:
+        manifest = json.loads(
+            (ROOT / "custom_components/floorplan_ui/manifest.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(self.RELEASE_VERSION, manifest["version"])
+
     def test_versions_match(self) -> None:
         manifest = json.loads(
             (ROOT / "custom_components/floorplan_ui/manifest.json").read_text(encoding="utf-8")

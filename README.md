@@ -4,9 +4,8 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** public alpha (current release: `0.1.2`) on a hardened beta foundation.
-> The next version remains unreleased until the release commit passes every CI and
-> Home Assistant matrix check. Back up production data while testing `0.x` releases.
+> **Status:** public beta prerelease (current release: `0.2.0-beta.1`).
+> Back up production data while testing `0.x` prereleases.
 
 ## Current capabilities
 
@@ -105,7 +104,8 @@ manually.
 The complete user-facing release history is maintained in
 [`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
 from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
-The current public release is [`v0.1.2`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.1.2).
+The current public release is
+[`v0.2.0-beta.1`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.2.0-beta.1).
 
 Versions below `1.0.0` represent initial development and may contain breaking
 changes. Public `0.x` releases are offered through the normal HACS channel;
