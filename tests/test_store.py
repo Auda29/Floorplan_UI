@@ -125,6 +125,37 @@ class FloorplanStoreTests(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("integer", error or "")
 
+    def test_boolean_and_fractional_versions_are_rejected(self) -> None:
+        for invalid_version in (True, False, 1.5):
+            with self.subTest(version=invalid_version):
+                config = valid_config()
+                config["version"] = invalid_version
+
+                with self.assertRaisesRegex(ValueError, "Config.version must be an integer"):
+                    FloorplanStore.validate_and_normalize(config)
+
+    def test_legacy_non_list_plans_are_rejected_without_migration_crash(self) -> None:
+        config = {"version": 1, "plans": 42}
+
+        with self.assertRaisesRegex(ValueError, "Config.plans must be a list"):
+            FloorplanStore.validate_and_normalize(config)
+
+    def test_legacy_non_list_markers_are_rejected_without_migration_crash(self) -> None:
+        config = valid_config()
+        config["version"] = 1
+        config["plans"][0]["markers"] = 42
+
+        with self.assertRaisesRegex(ValueError, "markers is invalid"):
+            FloorplanStore.validate_and_normalize(config)
+
+    def test_legacy_non_object_area_is_rejected_without_normalization_crash(self) -> None:
+        config = valid_config()
+        config["version"] = 1
+        config["plans"][0]["areas"] = [42]
+
+        with self.assertRaisesRegex(ValueError, "area 0 is invalid"):
+            FloorplanStore.validate_and_normalize(config)
+
     def test_invalid_polygon_is_rejected(self) -> None:
         config = valid_config()
         config["plans"][0]["areas"] = [
@@ -259,11 +290,23 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         self.store._update_lock = asyncio.Lock()
 
         class AssetStore:
+            def __init__(self) -> None:
+                self.collected: list[set[str]] = []
+                self.validated_data_urls: list[str] = []
+
             @staticmethod
             async def async_exists(asset_id: str, content_type: str) -> bool:
                 return asset_id == "a" * 64 and content_type == "image/png"
 
-        self.store._asset_store = AssetStore()
+            async def async_collect_garbage(self, referenced: set[str]) -> list[str]:
+                self.collected.append(referenced)
+                return []
+
+            async def async_validate_data_url(self, data_url: str) -> None:
+                self.validated_data_urls.append(data_url)
+
+        self.asset_store = AssetStore()
+        self.store._asset_store = self.asset_store
 
         async def async_load(instance):
             return instance._data
@@ -279,6 +322,33 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(1, updated["revision"])
         self.assertEqual(1, self.store._data["revision"])
+
+    async def test_successful_update_collects_only_after_persisting_references(self) -> None:
+        await self.store.async_update_config(valid_config(), 0)
+
+        self.assertEqual([{"a" * 64}], self.asset_store.collected)
+
+    async def test_garbage_collection_failure_does_not_undo_saved_config(self) -> None:
+        async def fail_collection(_referenced: set[str]) -> list[str]:
+            raise OSError("disk busy")
+
+        self.asset_store.async_collect_garbage = fail_collection
+
+        updated = await self.store.async_update_config(valid_config(), 0)
+
+        self.assertEqual(1, updated["revision"])
+        self.assertEqual(1, self.store._data["revision"])
+
+    async def test_import_validation_delegates_embedded_image_decoding(self) -> None:
+        config = valid_config()
+        background = config["plans"][0]["background"]
+        del background["asset_id"]
+        del background["content_type"]
+        background["url"] = "data:image/png;base64,iVBORw0KGgp1bml0LXRlc3Q="
+
+        await self.store.async_validate_config(config, allow_embedded_images=True)
+
+        self.assertEqual([background["url"]], self.asset_store.validated_data_urls)
 
     async def test_stale_update_is_rejected(self) -> None:
         await self.store.async_update_config(valid_config(), 0)

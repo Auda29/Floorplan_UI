@@ -19,6 +19,7 @@ from .const import (
     DOMAIN,
     MAX_IMAGE_FILE_BYTES,
 )
+from .upload import AssetTooLargeError, async_read_limited
 
 _CACHE_HEADERS: Final = {
     "Cache-Control": "private, max-age=31536000, immutable",
@@ -89,7 +90,13 @@ class FloorplanAssetUploadView(HomeAssistantView):
             )
 
         content_type = request.content_type
-        data = await request.read()
+        try:
+            data = await async_read_limited(request.content, MAX_IMAGE_FILE_BYTES)
+        except AssetTooLargeError:
+            return web.json_response(
+                {"error": f"The image exceeds the {MAX_IMAGE_FILE_BYTES // 1_000_000} MB limit"},
+                status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+            )
         asset_store: FloorplanAssetStore = request.app["hass"].data[DOMAIN]["asset_store"]
         try:
             reference = await asset_store.async_store(data, content_type)

@@ -1,0 +1,4555 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Auda29/Floorplan_UI/schema/floorplan-config.schema.json",
+  "title": "Floorplan UI configuration",
+  "description": "Versioned persisted Floorplan UI configuration. Background.url is transient in runtime responses and portable JSON exports and is removed before persistence.",
+  "type": "object",
+  "required": [
+    "version",
+    "revision",
+    "plans",
+    "views"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "default_view": {
+      "type": "string"
+    },
+    "plans": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/plan"
+      }
+    },
+    "views": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/view"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "background": {
+      "type": "object",
+      "required": [
+        "type",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "type": {
+          "const": "image"
+        },
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "content_type": {
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "Transient signed URL or portable PNG/JPEG data URL; never persisted for asset-backed images."
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 50000
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 50000
+        }
+      },
+      "additionalProperties": false,
+      "dependentRequired": {
+        "asset_id": [
+          "content_type"
+        ],
+        "content_type": [
+          "asset_id"
+        ]
+      }
+    },
+    "rectShape": {
+      "type": "object",
+      "required": [
+        "type",
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "type": {
+          "const": "rect"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "polygonShape": {
+      "type": "object",
+      "required": [
+        "type",
+        "points"
+      ],
+      "properties": {
+        "type": {
+          "const": "polygon"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "points": {
+          "type": "array",
+          "minItems": 6,
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 2000,
+          "anyOf": [
+            {
+              "minItems": 6,
+              "maxItems": 6
+            },
+            {
+              "minItems": 8,
+              "maxItems": 8
+            },
+            {
+              "minItems": 10,
+              "maxItems": 10
+            },
+            {
+              "minItems": 12,
+              "maxItems": 12
+            },
+            {
+              "minItems": 14,
+              "maxItems": 14
+            },
+            {
+              "minItems": 16,
+              "maxItems": 16
+            },
+            {
+              "minItems": 18,
+              "maxItems": 18
+            },
+            {
+              "minItems": 20,
+              "maxItems": 20
+            },
+            {
+              "minItems": 22,
+              "maxItems": 22
+            },
+            {
+              "minItems": 24,
+              "maxItems": 24
+            },
+            {
+              "minItems": 26,
+              "maxItems": 26
+            },
+            {
+              "minItems": 28,
+              "maxItems": 28
+            },
+            {
+              "minItems": 30,
+              "maxItems": 30
+            },
+            {
+              "minItems": 32,
+              "maxItems": 32
+            },
+            {
+              "minItems": 34,
+              "maxItems": 34
+            },
+            {
+              "minItems": 36,
+              "maxItems": 36
+            },
+            {
+              "minItems": 38,
+              "maxItems": 38
+            },
+            {
+              "minItems": 40,
+              "maxItems": 40
+            },
+            {
+              "minItems": 42,
+              "maxItems": 42
+            },
+            {
+              "minItems": 44,
+              "maxItems": 44
+            },
+            {
+              "minItems": 46,
+              "maxItems": 46
+            },
+            {
+              "minItems": 48,
+              "maxItems": 48
+            },
+            {
+              "minItems": 50,
+              "maxItems": 50
+            },
+            {
+              "minItems": 52,
+              "maxItems": 52
+            },
+            {
+              "minItems": 54,
+              "maxItems": 54
+            },
+            {
+              "minItems": 56,
+              "maxItems": 56
+            },
+            {
+              "minItems": 58,
+              "maxItems": 58
+            },
+            {
+              "minItems": 60,
+              "maxItems": 60
+            },
+            {
+              "minItems": 62,
+              "maxItems": 62
+            },
+            {
+              "minItems": 64,
+              "maxItems": 64
+            },
+            {
+              "minItems": 66,
+              "maxItems": 66
+            },
+            {
+              "minItems": 68,
+              "maxItems": 68
+            },
+            {
+              "minItems": 70,
+              "maxItems": 70
+            },
+            {
+              "minItems": 72,
+              "maxItems": 72
+            },
+            {
+              "minItems": 74,
+              "maxItems": 74
+            },
+            {
+              "minItems": 76,
+              "maxItems": 76
+            },
+            {
+              "minItems": 78,
+              "maxItems": 78
+            },
+            {
+              "minItems": 80,
+              "maxItems": 80
+            },
+            {
+              "minItems": 82,
+              "maxItems": 82
+            },
+            {
+              "minItems": 84,
+              "maxItems": 84
+            },
+            {
+              "minItems": 86,
+              "maxItems": 86
+            },
+            {
+              "minItems": 88,
+              "maxItems": 88
+            },
+            {
+              "minItems": 90,
+              "maxItems": 90
+            },
+            {
+              "minItems": 92,
+              "maxItems": 92
+            },
+            {
+              "minItems": 94,
+              "maxItems": 94
+            },
+            {
+              "minItems": 96,
+              "maxItems": 96
+            },
+            {
+              "minItems": 98,
+              "maxItems": 98
+            },
+            {
+              "minItems": 100,
+              "maxItems": 100
+            },
+            {
+              "minItems": 102,
+              "maxItems": 102
+            },
+            {
+              "minItems": 104,
+              "maxItems": 104
+            },
+            {
+              "minItems": 106,
+              "maxItems": 106
+            },
+            {
+              "minItems": 108,
+              "maxItems": 108
+            },
+            {
+              "minItems": 110,
+              "maxItems": 110
+            },
+            {
+              "minItems": 112,
+              "maxItems": 112
+            },
+            {
+              "minItems": 114,
+              "maxItems": 114
+            },
+            {
+              "minItems": 116,
+              "maxItems": 116
+            },
+            {
+              "minItems": 118,
+              "maxItems": 118
+            },
+            {
+              "minItems": 120,
+              "maxItems": 120
+            },
+            {
+              "minItems": 122,
+              "maxItems": 122
+            },
+            {
+              "minItems": 124,
+              "maxItems": 124
+            },
+            {
+              "minItems": 126,
+              "maxItems": 126
+            },
+            {
+              "minItems": 128,
+              "maxItems": 128
+            },
+            {
+              "minItems": 130,
+              "maxItems": 130
+            },
+            {
+              "minItems": 132,
+              "maxItems": 132
+            },
+            {
+              "minItems": 134,
+              "maxItems": 134
+            },
+            {
+              "minItems": 136,
+              "maxItems": 136
+            },
+            {
+              "minItems": 138,
+              "maxItems": 138
+            },
+            {
+              "minItems": 140,
+              "maxItems": 140
+            },
+            {
+              "minItems": 142,
+              "maxItems": 142
+            },
+            {
+              "minItems": 144,
+              "maxItems": 144
+            },
+            {
+              "minItems": 146,
+              "maxItems": 146
+            },
+            {
+              "minItems": 148,
+              "maxItems": 148
+            },
+            {
+              "minItems": 150,
+              "maxItems": 150
+            },
+            {
+              "minItems": 152,
+              "maxItems": 152
+            },
+            {
+              "minItems": 154,
+              "maxItems": 154
+            },
+            {
+              "minItems": 156,
+              "maxItems": 156
+            },
+            {
+              "minItems": 158,
+              "maxItems": 158
+            },
+            {
+              "minItems": 160,
+              "maxItems": 160
+            },
+            {
+              "minItems": 162,
+              "maxItems": 162
+            },
+            {
+              "minItems": 164,
+              "maxItems": 164
+            },
+            {
+              "minItems": 166,
+              "maxItems": 166
+            },
+            {
+              "minItems": 168,
+              "maxItems": 168
+            },
+            {
+              "minItems": 170,
+              "maxItems": 170
+            },
+            {
+              "minItems": 172,
+              "maxItems": 172
+            },
+            {
+              "minItems": 174,
+              "maxItems": 174
+            },
+            {
+              "minItems": 176,
+              "maxItems": 176
+            },
+            {
+              "minItems": 178,
+              "maxItems": 178
+            },
+            {
+              "minItems": 180,
+              "maxItems": 180
+            },
+            {
+              "minItems": 182,
+              "maxItems": 182
+            },
+            {
+              "minItems": 184,
+              "maxItems": 184
+            },
+            {
+              "minItems": 186,
+              "maxItems": 186
+            },
+            {
+              "minItems": 188,
+              "maxItems": 188
+            },
+            {
+              "minItems": 190,
+              "maxItems": 190
+            },
+            {
+              "minItems": 192,
+              "maxItems": 192
+            },
+            {
+              "minItems": 194,
+              "maxItems": 194
+            },
+            {
+              "minItems": 196,
+              "maxItems": 196
+            },
+            {
+              "minItems": 198,
+              "maxItems": 198
+            },
+            {
+              "minItems": 200,
+              "maxItems": 200
+            },
+            {
+              "minItems": 202,
+              "maxItems": 202
+            },
+            {
+              "minItems": 204,
+              "maxItems": 204
+            },
+            {
+              "minItems": 206,
+              "maxItems": 206
+            },
+            {
+              "minItems": 208,
+              "maxItems": 208
+            },
+            {
+              "minItems": 210,
+              "maxItems": 210
+            },
+            {
+              "minItems": 212,
+              "maxItems": 212
+            },
+            {
+              "minItems": 214,
+              "maxItems": 214
+            },
+            {
+              "minItems": 216,
+              "maxItems": 216
+            },
+            {
+              "minItems": 218,
+              "maxItems": 218
+            },
+            {
+              "minItems": 220,
+              "maxItems": 220
+            },
+            {
+              "minItems": 222,
+              "maxItems": 222
+            },
+            {
+              "minItems": 224,
+              "maxItems": 224
+            },
+            {
+              "minItems": 226,
+              "maxItems": 226
+            },
+            {
+              "minItems": 228,
+              "maxItems": 228
+            },
+            {
+              "minItems": 230,
+              "maxItems": 230
+            },
+            {
+              "minItems": 232,
+              "maxItems": 232
+            },
+            {
+              "minItems": 234,
+              "maxItems": 234
+            },
+            {
+              "minItems": 236,
+              "maxItems": 236
+            },
+            {
+              "minItems": 238,
+              "maxItems": 238
+            },
+            {
+              "minItems": 240,
+              "maxItems": 240
+            },
+            {
+              "minItems": 242,
+              "maxItems": 242
+            },
+            {
+              "minItems": 244,
+              "maxItems": 244
+            },
+            {
+              "minItems": 246,
+              "maxItems": 246
+            },
+            {
+              "minItems": 248,
+              "maxItems": 248
+            },
+            {
+              "minItems": 250,
+              "maxItems": 250
+            },
+            {
+              "minItems": 252,
+              "maxItems": 252
+            },
+            {
+              "minItems": 254,
+              "maxItems": 254
+            },
+            {
+              "minItems": 256,
+              "maxItems": 256
+            },
+            {
+              "minItems": 258,
+              "maxItems": 258
+            },
+            {
+              "minItems": 260,
+              "maxItems": 260
+            },
+            {
+              "minItems": 262,
+              "maxItems": 262
+            },
+            {
+              "minItems": 264,
+              "maxItems": 264
+            },
+            {
+              "minItems": 266,
+              "maxItems": 266
+            },
+            {
+              "minItems": 268,
+              "maxItems": 268
+            },
+            {
+              "minItems": 270,
+              "maxItems": 270
+            },
+            {
+              "minItems": 272,
+              "maxItems": 272
+            },
+            {
+              "minItems": 274,
+              "maxItems": 274
+            },
+            {
+              "minItems": 276,
+              "maxItems": 276
+            },
+            {
+              "minItems": 278,
+              "maxItems": 278
+            },
+            {
+              "minItems": 280,
+              "maxItems": 280
+            },
+            {
+              "minItems": 282,
+              "maxItems": 282
+            },
+            {
+              "minItems": 284,
+              "maxItems": 284
+            },
+            {
+              "minItems": 286,
+              "maxItems": 286
+            },
+            {
+              "minItems": 288,
+              "maxItems": 288
+            },
+            {
+              "minItems": 290,
+              "maxItems": 290
+            },
+            {
+              "minItems": 292,
+              "maxItems": 292
+            },
+            {
+              "minItems": 294,
+              "maxItems": 294
+            },
+            {
+              "minItems": 296,
+              "maxItems": 296
+            },
+            {
+              "minItems": 298,
+              "maxItems": 298
+            },
+            {
+              "minItems": 300,
+              "maxItems": 300
+            },
+            {
+              "minItems": 302,
+              "maxItems": 302
+            },
+            {
+              "minItems": 304,
+              "maxItems": 304
+            },
+            {
+              "minItems": 306,
+              "maxItems": 306
+            },
+            {
+              "minItems": 308,
+              "maxItems": 308
+            },
+            {
+              "minItems": 310,
+              "maxItems": 310
+            },
+            {
+              "minItems": 312,
+              "maxItems": 312
+            },
+            {
+              "minItems": 314,
+              "maxItems": 314
+            },
+            {
+              "minItems": 316,
+              "maxItems": 316
+            },
+            {
+              "minItems": 318,
+              "maxItems": 318
+            },
+            {
+              "minItems": 320,
+              "maxItems": 320
+            },
+            {
+              "minItems": 322,
+              "maxItems": 322
+            },
+            {
+              "minItems": 324,
+              "maxItems": 324
+            },
+            {
+              "minItems": 326,
+              "maxItems": 326
+            },
+            {
+              "minItems": 328,
+              "maxItems": 328
+            },
+            {
+              "minItems": 330,
+              "maxItems": 330
+            },
+            {
+              "minItems": 332,
+              "maxItems": 332
+            },
+            {
+              "minItems": 334,
+              "maxItems": 334
+            },
+            {
+              "minItems": 336,
+              "maxItems": 336
+            },
+            {
+              "minItems": 338,
+              "maxItems": 338
+            },
+            {
+              "minItems": 340,
+              "maxItems": 340
+            },
+            {
+              "minItems": 342,
+              "maxItems": 342
+            },
+            {
+              "minItems": 344,
+              "maxItems": 344
+            },
+            {
+              "minItems": 346,
+              "maxItems": 346
+            },
+            {
+              "minItems": 348,
+              "maxItems": 348
+            },
+            {
+              "minItems": 350,
+              "maxItems": 350
+            },
+            {
+              "minItems": 352,
+              "maxItems": 352
+            },
+            {
+              "minItems": 354,
+              "maxItems": 354
+            },
+            {
+              "minItems": 356,
+              "maxItems": 356
+            },
+            {
+              "minItems": 358,
+              "maxItems": 358
+            },
+            {
+              "minItems": 360,
+              "maxItems": 360
+            },
+            {
+              "minItems": 362,
+              "maxItems": 362
+            },
+            {
+              "minItems": 364,
+              "maxItems": 364
+            },
+            {
+              "minItems": 366,
+              "maxItems": 366
+            },
+            {
+              "minItems": 368,
+              "maxItems": 368
+            },
+            {
+              "minItems": 370,
+              "maxItems": 370
+            },
+            {
+              "minItems": 372,
+              "maxItems": 372
+            },
+            {
+              "minItems": 374,
+              "maxItems": 374
+            },
+            {
+              "minItems": 376,
+              "maxItems": 376
+            },
+            {
+              "minItems": 378,
+              "maxItems": 378
+            },
+            {
+              "minItems": 380,
+              "maxItems": 380
+            },
+            {
+              "minItems": 382,
+              "maxItems": 382
+            },
+            {
+              "minItems": 384,
+              "maxItems": 384
+            },
+            {
+              "minItems": 386,
+              "maxItems": 386
+            },
+            {
+              "minItems": 388,
+              "maxItems": 388
+            },
+            {
+              "minItems": 390,
+              "maxItems": 390
+            },
+            {
+              "minItems": 392,
+              "maxItems": 392
+            },
+            {
+              "minItems": 394,
+              "maxItems": 394
+            },
+            {
+              "minItems": 396,
+              "maxItems": 396
+            },
+            {
+              "minItems": 398,
+              "maxItems": 398
+            },
+            {
+              "minItems": 400,
+              "maxItems": 400
+            },
+            {
+              "minItems": 402,
+              "maxItems": 402
+            },
+            {
+              "minItems": 404,
+              "maxItems": 404
+            },
+            {
+              "minItems": 406,
+              "maxItems": 406
+            },
+            {
+              "minItems": 408,
+              "maxItems": 408
+            },
+            {
+              "minItems": 410,
+              "maxItems": 410
+            },
+            {
+              "minItems": 412,
+              "maxItems": 412
+            },
+            {
+              "minItems": 414,
+              "maxItems": 414
+            },
+            {
+              "minItems": 416,
+              "maxItems": 416
+            },
+            {
+              "minItems": 418,
+              "maxItems": 418
+            },
+            {
+              "minItems": 420,
+              "maxItems": 420
+            },
+            {
+              "minItems": 422,
+              "maxItems": 422
+            },
+            {
+              "minItems": 424,
+              "maxItems": 424
+            },
+            {
+              "minItems": 426,
+              "maxItems": 426
+            },
+            {
+              "minItems": 428,
+              "maxItems": 428
+            },
+            {
+              "minItems": 430,
+              "maxItems": 430
+            },
+            {
+              "minItems": 432,
+              "maxItems": 432
+            },
+            {
+              "minItems": 434,
+              "maxItems": 434
+            },
+            {
+              "minItems": 436,
+              "maxItems": 436
+            },
+            {
+              "minItems": 438,
+              "maxItems": 438
+            },
+            {
+              "minItems": 440,
+              "maxItems": 440
+            },
+            {
+              "minItems": 442,
+              "maxItems": 442
+            },
+            {
+              "minItems": 444,
+              "maxItems": 444
+            },
+            {
+              "minItems": 446,
+              "maxItems": 446
+            },
+            {
+              "minItems": 448,
+              "maxItems": 448
+            },
+            {
+              "minItems": 450,
+              "maxItems": 450
+            },
+            {
+              "minItems": 452,
+              "maxItems": 452
+            },
+            {
+              "minItems": 454,
+              "maxItems": 454
+            },
+            {
+              "minItems": 456,
+              "maxItems": 456
+            },
+            {
+              "minItems": 458,
+              "maxItems": 458
+            },
+            {
+              "minItems": 460,
+              "maxItems": 460
+            },
+            {
+              "minItems": 462,
+              "maxItems": 462
+            },
+            {
+              "minItems": 464,
+              "maxItems": 464
+            },
+            {
+              "minItems": 466,
+              "maxItems": 466
+            },
+            {
+              "minItems": 468,
+              "maxItems": 468
+            },
+            {
+              "minItems": 470,
+              "maxItems": 470
+            },
+            {
+              "minItems": 472,
+              "maxItems": 472
+            },
+            {
+              "minItems": 474,
+              "maxItems": 474
+            },
+            {
+              "minItems": 476,
+              "maxItems": 476
+            },
+            {
+              "minItems": 478,
+              "maxItems": 478
+            },
+            {
+              "minItems": 480,
+              "maxItems": 480
+            },
+            {
+              "minItems": 482,
+              "maxItems": 482
+            },
+            {
+              "minItems": 484,
+              "maxItems": 484
+            },
+            {
+              "minItems": 486,
+              "maxItems": 486
+            },
+            {
+              "minItems": 488,
+              "maxItems": 488
+            },
+            {
+              "minItems": 490,
+              "maxItems": 490
+            },
+            {
+              "minItems": 492,
+              "maxItems": 492
+            },
+            {
+              "minItems": 494,
+              "maxItems": 494
+            },
+            {
+              "minItems": 496,
+              "maxItems": 496
+            },
+            {
+              "minItems": 498,
+              "maxItems": 498
+            },
+            {
+              "minItems": 500,
+              "maxItems": 500
+            },
+            {
+              "minItems": 502,
+              "maxItems": 502
+            },
+            {
+              "minItems": 504,
+              "maxItems": 504
+            },
+            {
+              "minItems": 506,
+              "maxItems": 506
+            },
+            {
+              "minItems": 508,
+              "maxItems": 508
+            },
+            {
+              "minItems": 510,
+              "maxItems": 510
+            },
+            {
+              "minItems": 512,
+              "maxItems": 512
+            },
+            {
+              "minItems": 514,
+              "maxItems": 514
+            },
+            {
+              "minItems": 516,
+              "maxItems": 516
+            },
+            {
+              "minItems": 518,
+              "maxItems": 518
+            },
+            {
+              "minItems": 520,
+              "maxItems": 520
+            },
+            {
+              "minItems": 522,
+              "maxItems": 522
+            },
+            {
+              "minItems": 524,
+              "maxItems": 524
+            },
+            {
+              "minItems": 526,
+              "maxItems": 526
+            },
+            {
+              "minItems": 528,
+              "maxItems": 528
+            },
+            {
+              "minItems": 530,
+              "maxItems": 530
+            },
+            {
+              "minItems": 532,
+              "maxItems": 532
+            },
+            {
+              "minItems": 534,
+              "maxItems": 534
+            },
+            {
+              "minItems": 536,
+              "maxItems": 536
+            },
+            {
+              "minItems": 538,
+              "maxItems": 538
+            },
+            {
+              "minItems": 540,
+              "maxItems": 540
+            },
+            {
+              "minItems": 542,
+              "maxItems": 542
+            },
+            {
+              "minItems": 544,
+              "maxItems": 544
+            },
+            {
+              "minItems": 546,
+              "maxItems": 546
+            },
+            {
+              "minItems": 548,
+              "maxItems": 548
+            },
+            {
+              "minItems": 550,
+              "maxItems": 550
+            },
+            {
+              "minItems": 552,
+              "maxItems": 552
+            },
+            {
+              "minItems": 554,
+              "maxItems": 554
+            },
+            {
+              "minItems": 556,
+              "maxItems": 556
+            },
+            {
+              "minItems": 558,
+              "maxItems": 558
+            },
+            {
+              "minItems": 560,
+              "maxItems": 560
+            },
+            {
+              "minItems": 562,
+              "maxItems": 562
+            },
+            {
+              "minItems": 564,
+              "maxItems": 564
+            },
+            {
+              "minItems": 566,
+              "maxItems": 566
+            },
+            {
+              "minItems": 568,
+              "maxItems": 568
+            },
+            {
+              "minItems": 570,
+              "maxItems": 570
+            },
+            {
+              "minItems": 572,
+              "maxItems": 572
+            },
+            {
+              "minItems": 574,
+              "maxItems": 574
+            },
+            {
+              "minItems": 576,
+              "maxItems": 576
+            },
+            {
+              "minItems": 578,
+              "maxItems": 578
+            },
+            {
+              "minItems": 580,
+              "maxItems": 580
+            },
+            {
+              "minItems": 582,
+              "maxItems": 582
+            },
+            {
+              "minItems": 584,
+              "maxItems": 584
+            },
+            {
+              "minItems": 586,
+              "maxItems": 586
+            },
+            {
+              "minItems": 588,
+              "maxItems": 588
+            },
+            {
+              "minItems": 590,
+              "maxItems": 590
+            },
+            {
+              "minItems": 592,
+              "maxItems": 592
+            },
+            {
+              "minItems": 594,
+              "maxItems": 594
+            },
+            {
+              "minItems": 596,
+              "maxItems": 596
+            },
+            {
+              "minItems": 598,
+              "maxItems": 598
+            },
+            {
+              "minItems": 600,
+              "maxItems": 600
+            },
+            {
+              "minItems": 602,
+              "maxItems": 602
+            },
+            {
+              "minItems": 604,
+              "maxItems": 604
+            },
+            {
+              "minItems": 606,
+              "maxItems": 606
+            },
+            {
+              "minItems": 608,
+              "maxItems": 608
+            },
+            {
+              "minItems": 610,
+              "maxItems": 610
+            },
+            {
+              "minItems": 612,
+              "maxItems": 612
+            },
+            {
+              "minItems": 614,
+              "maxItems": 614
+            },
+            {
+              "minItems": 616,
+              "maxItems": 616
+            },
+            {
+              "minItems": 618,
+              "maxItems": 618
+            },
+            {
+              "minItems": 620,
+              "maxItems": 620
+            },
+            {
+              "minItems": 622,
+              "maxItems": 622
+            },
+            {
+              "minItems": 624,
+              "maxItems": 624
+            },
+            {
+              "minItems": 626,
+              "maxItems": 626
+            },
+            {
+              "minItems": 628,
+              "maxItems": 628
+            },
+            {
+              "minItems": 630,
+              "maxItems": 630
+            },
+            {
+              "minItems": 632,
+              "maxItems": 632
+            },
+            {
+              "minItems": 634,
+              "maxItems": 634
+            },
+            {
+              "minItems": 636,
+              "maxItems": 636
+            },
+            {
+              "minItems": 638,
+              "maxItems": 638
+            },
+            {
+              "minItems": 640,
+              "maxItems": 640
+            },
+            {
+              "minItems": 642,
+              "maxItems": 642
+            },
+            {
+              "minItems": 644,
+              "maxItems": 644
+            },
+            {
+              "minItems": 646,
+              "maxItems": 646
+            },
+            {
+              "minItems": 648,
+              "maxItems": 648
+            },
+            {
+              "minItems": 650,
+              "maxItems": 650
+            },
+            {
+              "minItems": 652,
+              "maxItems": 652
+            },
+            {
+              "minItems": 654,
+              "maxItems": 654
+            },
+            {
+              "minItems": 656,
+              "maxItems": 656
+            },
+            {
+              "minItems": 658,
+              "maxItems": 658
+            },
+            {
+              "minItems": 660,
+              "maxItems": 660
+            },
+            {
+              "minItems": 662,
+              "maxItems": 662
+            },
+            {
+              "minItems": 664,
+              "maxItems": 664
+            },
+            {
+              "minItems": 666,
+              "maxItems": 666
+            },
+            {
+              "minItems": 668,
+              "maxItems": 668
+            },
+            {
+              "minItems": 670,
+              "maxItems": 670
+            },
+            {
+              "minItems": 672,
+              "maxItems": 672
+            },
+            {
+              "minItems": 674,
+              "maxItems": 674
+            },
+            {
+              "minItems": 676,
+              "maxItems": 676
+            },
+            {
+              "minItems": 678,
+              "maxItems": 678
+            },
+            {
+              "minItems": 680,
+              "maxItems": 680
+            },
+            {
+              "minItems": 682,
+              "maxItems": 682
+            },
+            {
+              "minItems": 684,
+              "maxItems": 684
+            },
+            {
+              "minItems": 686,
+              "maxItems": 686
+            },
+            {
+              "minItems": 688,
+              "maxItems": 688
+            },
+            {
+              "minItems": 690,
+              "maxItems": 690
+            },
+            {
+              "minItems": 692,
+              "maxItems": 692
+            },
+            {
+              "minItems": 694,
+              "maxItems": 694
+            },
+            {
+              "minItems": 696,
+              "maxItems": 696
+            },
+            {
+              "minItems": 698,
+              "maxItems": 698
+            },
+            {
+              "minItems": 700,
+              "maxItems": 700
+            },
+            {
+              "minItems": 702,
+              "maxItems": 702
+            },
+            {
+              "minItems": 704,
+              "maxItems": 704
+            },
+            {
+              "minItems": 706,
+              "maxItems": 706
+            },
+            {
+              "minItems": 708,
+              "maxItems": 708
+            },
+            {
+              "minItems": 710,
+              "maxItems": 710
+            },
+            {
+              "minItems": 712,
+              "maxItems": 712
+            },
+            {
+              "minItems": 714,
+              "maxItems": 714
+            },
+            {
+              "minItems": 716,
+              "maxItems": 716
+            },
+            {
+              "minItems": 718,
+              "maxItems": 718
+            },
+            {
+              "minItems": 720,
+              "maxItems": 720
+            },
+            {
+              "minItems": 722,
+              "maxItems": 722
+            },
+            {
+              "minItems": 724,
+              "maxItems": 724
+            },
+            {
+              "minItems": 726,
+              "maxItems": 726
+            },
+            {
+              "minItems": 728,
+              "maxItems": 728
+            },
+            {
+              "minItems": 730,
+              "maxItems": 730
+            },
+            {
+              "minItems": 732,
+              "maxItems": 732
+            },
+            {
+              "minItems": 734,
+              "maxItems": 734
+            },
+            {
+              "minItems": 736,
+              "maxItems": 736
+            },
+            {
+              "minItems": 738,
+              "maxItems": 738
+            },
+            {
+              "minItems": 740,
+              "maxItems": 740
+            },
+            {
+              "minItems": 742,
+              "maxItems": 742
+            },
+            {
+              "minItems": 744,
+              "maxItems": 744
+            },
+            {
+              "minItems": 746,
+              "maxItems": 746
+            },
+            {
+              "minItems": 748,
+              "maxItems": 748
+            },
+            {
+              "minItems": 750,
+              "maxItems": 750
+            },
+            {
+              "minItems": 752,
+              "maxItems": 752
+            },
+            {
+              "minItems": 754,
+              "maxItems": 754
+            },
+            {
+              "minItems": 756,
+              "maxItems": 756
+            },
+            {
+              "minItems": 758,
+              "maxItems": 758
+            },
+            {
+              "minItems": 760,
+              "maxItems": 760
+            },
+            {
+              "minItems": 762,
+              "maxItems": 762
+            },
+            {
+              "minItems": 764,
+              "maxItems": 764
+            },
+            {
+              "minItems": 766,
+              "maxItems": 766
+            },
+            {
+              "minItems": 768,
+              "maxItems": 768
+            },
+            {
+              "minItems": 770,
+              "maxItems": 770
+            },
+            {
+              "minItems": 772,
+              "maxItems": 772
+            },
+            {
+              "minItems": 774,
+              "maxItems": 774
+            },
+            {
+              "minItems": 776,
+              "maxItems": 776
+            },
+            {
+              "minItems": 778,
+              "maxItems": 778
+            },
+            {
+              "minItems": 780,
+              "maxItems": 780
+            },
+            {
+              "minItems": 782,
+              "maxItems": 782
+            },
+            {
+              "minItems": 784,
+              "maxItems": 784
+            },
+            {
+              "minItems": 786,
+              "maxItems": 786
+            },
+            {
+              "minItems": 788,
+              "maxItems": 788
+            },
+            {
+              "minItems": 790,
+              "maxItems": 790
+            },
+            {
+              "minItems": 792,
+              "maxItems": 792
+            },
+            {
+              "minItems": 794,
+              "maxItems": 794
+            },
+            {
+              "minItems": 796,
+              "maxItems": 796
+            },
+            {
+              "minItems": 798,
+              "maxItems": 798
+            },
+            {
+              "minItems": 800,
+              "maxItems": 800
+            },
+            {
+              "minItems": 802,
+              "maxItems": 802
+            },
+            {
+              "minItems": 804,
+              "maxItems": 804
+            },
+            {
+              "minItems": 806,
+              "maxItems": 806
+            },
+            {
+              "minItems": 808,
+              "maxItems": 808
+            },
+            {
+              "minItems": 810,
+              "maxItems": 810
+            },
+            {
+              "minItems": 812,
+              "maxItems": 812
+            },
+            {
+              "minItems": 814,
+              "maxItems": 814
+            },
+            {
+              "minItems": 816,
+              "maxItems": 816
+            },
+            {
+              "minItems": 818,
+              "maxItems": 818
+            },
+            {
+              "minItems": 820,
+              "maxItems": 820
+            },
+            {
+              "minItems": 822,
+              "maxItems": 822
+            },
+            {
+              "minItems": 824,
+              "maxItems": 824
+            },
+            {
+              "minItems": 826,
+              "maxItems": 826
+            },
+            {
+              "minItems": 828,
+              "maxItems": 828
+            },
+            {
+              "minItems": 830,
+              "maxItems": 830
+            },
+            {
+              "minItems": 832,
+              "maxItems": 832
+            },
+            {
+              "minItems": 834,
+              "maxItems": 834
+            },
+            {
+              "minItems": 836,
+              "maxItems": 836
+            },
+            {
+              "minItems": 838,
+              "maxItems": 838
+            },
+            {
+              "minItems": 840,
+              "maxItems": 840
+            },
+            {
+              "minItems": 842,
+              "maxItems": 842
+            },
+            {
+              "minItems": 844,
+              "maxItems": 844
+            },
+            {
+              "minItems": 846,
+              "maxItems": 846
+            },
+            {
+              "minItems": 848,
+              "maxItems": 848
+            },
+            {
+              "minItems": 850,
+              "maxItems": 850
+            },
+            {
+              "minItems": 852,
+              "maxItems": 852
+            },
+            {
+              "minItems": 854,
+              "maxItems": 854
+            },
+            {
+              "minItems": 856,
+              "maxItems": 856
+            },
+            {
+              "minItems": 858,
+              "maxItems": 858
+            },
+            {
+              "minItems": 860,
+              "maxItems": 860
+            },
+            {
+              "minItems": 862,
+              "maxItems": 862
+            },
+            {
+              "minItems": 864,
+              "maxItems": 864
+            },
+            {
+              "minItems": 866,
+              "maxItems": 866
+            },
+            {
+              "minItems": 868,
+              "maxItems": 868
+            },
+            {
+              "minItems": 870,
+              "maxItems": 870
+            },
+            {
+              "minItems": 872,
+              "maxItems": 872
+            },
+            {
+              "minItems": 874,
+              "maxItems": 874
+            },
+            {
+              "minItems": 876,
+              "maxItems": 876
+            },
+            {
+              "minItems": 878,
+              "maxItems": 878
+            },
+            {
+              "minItems": 880,
+              "maxItems": 880
+            },
+            {
+              "minItems": 882,
+              "maxItems": 882
+            },
+            {
+              "minItems": 884,
+              "maxItems": 884
+            },
+            {
+              "minItems": 886,
+              "maxItems": 886
+            },
+            {
+              "minItems": 888,
+              "maxItems": 888
+            },
+            {
+              "minItems": 890,
+              "maxItems": 890
+            },
+            {
+              "minItems": 892,
+              "maxItems": 892
+            },
+            {
+              "minItems": 894,
+              "maxItems": 894
+            },
+            {
+              "minItems": 896,
+              "maxItems": 896
+            },
+            {
+              "minItems": 898,
+              "maxItems": 898
+            },
+            {
+              "minItems": 900,
+              "maxItems": 900
+            },
+            {
+              "minItems": 902,
+              "maxItems": 902
+            },
+            {
+              "minItems": 904,
+              "maxItems": 904
+            },
+            {
+              "minItems": 906,
+              "maxItems": 906
+            },
+            {
+              "minItems": 908,
+              "maxItems": 908
+            },
+            {
+              "minItems": 910,
+              "maxItems": 910
+            },
+            {
+              "minItems": 912,
+              "maxItems": 912
+            },
+            {
+              "minItems": 914,
+              "maxItems": 914
+            },
+            {
+              "minItems": 916,
+              "maxItems": 916
+            },
+            {
+              "minItems": 918,
+              "maxItems": 918
+            },
+            {
+              "minItems": 920,
+              "maxItems": 920
+            },
+            {
+              "minItems": 922,
+              "maxItems": 922
+            },
+            {
+              "minItems": 924,
+              "maxItems": 924
+            },
+            {
+              "minItems": 926,
+              "maxItems": 926
+            },
+            {
+              "minItems": 928,
+              "maxItems": 928
+            },
+            {
+              "minItems": 930,
+              "maxItems": 930
+            },
+            {
+              "minItems": 932,
+              "maxItems": 932
+            },
+            {
+              "minItems": 934,
+              "maxItems": 934
+            },
+            {
+              "minItems": 936,
+              "maxItems": 936
+            },
+            {
+              "minItems": 938,
+              "maxItems": 938
+            },
+            {
+              "minItems": 940,
+              "maxItems": 940
+            },
+            {
+              "minItems": 942,
+              "maxItems": 942
+            },
+            {
+              "minItems": 944,
+              "maxItems": 944
+            },
+            {
+              "minItems": 946,
+              "maxItems": 946
+            },
+            {
+              "minItems": 948,
+              "maxItems": 948
+            },
+            {
+              "minItems": 950,
+              "maxItems": 950
+            },
+            {
+              "minItems": 952,
+              "maxItems": 952
+            },
+            {
+              "minItems": 954,
+              "maxItems": 954
+            },
+            {
+              "minItems": 956,
+              "maxItems": 956
+            },
+            {
+              "minItems": 958,
+              "maxItems": 958
+            },
+            {
+              "minItems": 960,
+              "maxItems": 960
+            },
+            {
+              "minItems": 962,
+              "maxItems": 962
+            },
+            {
+              "minItems": 964,
+              "maxItems": 964
+            },
+            {
+              "minItems": 966,
+              "maxItems": 966
+            },
+            {
+              "minItems": 968,
+              "maxItems": 968
+            },
+            {
+              "minItems": 970,
+              "maxItems": 970
+            },
+            {
+              "minItems": 972,
+              "maxItems": 972
+            },
+            {
+              "minItems": 974,
+              "maxItems": 974
+            },
+            {
+              "minItems": 976,
+              "maxItems": 976
+            },
+            {
+              "minItems": 978,
+              "maxItems": 978
+            },
+            {
+              "minItems": 980,
+              "maxItems": 980
+            },
+            {
+              "minItems": 982,
+              "maxItems": 982
+            },
+            {
+              "minItems": 984,
+              "maxItems": 984
+            },
+            {
+              "minItems": 986,
+              "maxItems": 986
+            },
+            {
+              "minItems": 988,
+              "maxItems": 988
+            },
+            {
+              "minItems": 990,
+              "maxItems": 990
+            },
+            {
+              "minItems": 992,
+              "maxItems": 992
+            },
+            {
+              "minItems": 994,
+              "maxItems": 994
+            },
+            {
+              "minItems": 996,
+              "maxItems": 996
+            },
+            {
+              "minItems": 998,
+              "maxItems": 998
+            },
+            {
+              "minItems": 1000,
+              "maxItems": 1000
+            },
+            {
+              "minItems": 1002,
+              "maxItems": 1002
+            },
+            {
+              "minItems": 1004,
+              "maxItems": 1004
+            },
+            {
+              "minItems": 1006,
+              "maxItems": 1006
+            },
+            {
+              "minItems": 1008,
+              "maxItems": 1008
+            },
+            {
+              "minItems": 1010,
+              "maxItems": 1010
+            },
+            {
+              "minItems": 1012,
+              "maxItems": 1012
+            },
+            {
+              "minItems": 1014,
+              "maxItems": 1014
+            },
+            {
+              "minItems": 1016,
+              "maxItems": 1016
+            },
+            {
+              "minItems": 1018,
+              "maxItems": 1018
+            },
+            {
+              "minItems": 1020,
+              "maxItems": 1020
+            },
+            {
+              "minItems": 1022,
+              "maxItems": 1022
+            },
+            {
+              "minItems": 1024,
+              "maxItems": 1024
+            },
+            {
+              "minItems": 1026,
+              "maxItems": 1026
+            },
+            {
+              "minItems": 1028,
+              "maxItems": 1028
+            },
+            {
+              "minItems": 1030,
+              "maxItems": 1030
+            },
+            {
+              "minItems": 1032,
+              "maxItems": 1032
+            },
+            {
+              "minItems": 1034,
+              "maxItems": 1034
+            },
+            {
+              "minItems": 1036,
+              "maxItems": 1036
+            },
+            {
+              "minItems": 1038,
+              "maxItems": 1038
+            },
+            {
+              "minItems": 1040,
+              "maxItems": 1040
+            },
+            {
+              "minItems": 1042,
+              "maxItems": 1042
+            },
+            {
+              "minItems": 1044,
+              "maxItems": 1044
+            },
+            {
+              "minItems": 1046,
+              "maxItems": 1046
+            },
+            {
+              "minItems": 1048,
+              "maxItems": 1048
+            },
+            {
+              "minItems": 1050,
+              "maxItems": 1050
+            },
+            {
+              "minItems": 1052,
+              "maxItems": 1052
+            },
+            {
+              "minItems": 1054,
+              "maxItems": 1054
+            },
+            {
+              "minItems": 1056,
+              "maxItems": 1056
+            },
+            {
+              "minItems": 1058,
+              "maxItems": 1058
+            },
+            {
+              "minItems": 1060,
+              "maxItems": 1060
+            },
+            {
+              "minItems": 1062,
+              "maxItems": 1062
+            },
+            {
+              "minItems": 1064,
+              "maxItems": 1064
+            },
+            {
+              "minItems": 1066,
+              "maxItems": 1066
+            },
+            {
+              "minItems": 1068,
+              "maxItems": 1068
+            },
+            {
+              "minItems": 1070,
+              "maxItems": 1070
+            },
+            {
+              "minItems": 1072,
+              "maxItems": 1072
+            },
+            {
+              "minItems": 1074,
+              "maxItems": 1074
+            },
+            {
+              "minItems": 1076,
+              "maxItems": 1076
+            },
+            {
+              "minItems": 1078,
+              "maxItems": 1078
+            },
+            {
+              "minItems": 1080,
+              "maxItems": 1080
+            },
+            {
+              "minItems": 1082,
+              "maxItems": 1082
+            },
+            {
+              "minItems": 1084,
+              "maxItems": 1084
+            },
+            {
+              "minItems": 1086,
+              "maxItems": 1086
+            },
+            {
+              "minItems": 1088,
+              "maxItems": 1088
+            },
+            {
+              "minItems": 1090,
+              "maxItems": 1090
+            },
+            {
+              "minItems": 1092,
+              "maxItems": 1092
+            },
+            {
+              "minItems": 1094,
+              "maxItems": 1094
+            },
+            {
+              "minItems": 1096,
+              "maxItems": 1096
+            },
+            {
+              "minItems": 1098,
+              "maxItems": 1098
+            },
+            {
+              "minItems": 1100,
+              "maxItems": 1100
+            },
+            {
+              "minItems": 1102,
+              "maxItems": 1102
+            },
+            {
+              "minItems": 1104,
+              "maxItems": 1104
+            },
+            {
+              "minItems": 1106,
+              "maxItems": 1106
+            },
+            {
+              "minItems": 1108,
+              "maxItems": 1108
+            },
+            {
+              "minItems": 1110,
+              "maxItems": 1110
+            },
+            {
+              "minItems": 1112,
+              "maxItems": 1112
+            },
+            {
+              "minItems": 1114,
+              "maxItems": 1114
+            },
+            {
+              "minItems": 1116,
+              "maxItems": 1116
+            },
+            {
+              "minItems": 1118,
+              "maxItems": 1118
+            },
+            {
+              "minItems": 1120,
+              "maxItems": 1120
+            },
+            {
+              "minItems": 1122,
+              "maxItems": 1122
+            },
+            {
+              "minItems": 1124,
+              "maxItems": 1124
+            },
+            {
+              "minItems": 1126,
+              "maxItems": 1126
+            },
+            {
+              "minItems": 1128,
+              "maxItems": 1128
+            },
+            {
+              "minItems": 1130,
+              "maxItems": 1130
+            },
+            {
+              "minItems": 1132,
+              "maxItems": 1132
+            },
+            {
+              "minItems": 1134,
+              "maxItems": 1134
+            },
+            {
+              "minItems": 1136,
+              "maxItems": 1136
+            },
+            {
+              "minItems": 1138,
+              "maxItems": 1138
+            },
+            {
+              "minItems": 1140,
+              "maxItems": 1140
+            },
+            {
+              "minItems": 1142,
+              "maxItems": 1142
+            },
+            {
+              "minItems": 1144,
+              "maxItems": 1144
+            },
+            {
+              "minItems": 1146,
+              "maxItems": 1146
+            },
+            {
+              "minItems": 1148,
+              "maxItems": 1148
+            },
+            {
+              "minItems": 1150,
+              "maxItems": 1150
+            },
+            {
+              "minItems": 1152,
+              "maxItems": 1152
+            },
+            {
+              "minItems": 1154,
+              "maxItems": 1154
+            },
+            {
+              "minItems": 1156,
+              "maxItems": 1156
+            },
+            {
+              "minItems": 1158,
+              "maxItems": 1158
+            },
+            {
+              "minItems": 1160,
+              "maxItems": 1160
+            },
+            {
+              "minItems": 1162,
+              "maxItems": 1162
+            },
+            {
+              "minItems": 1164,
+              "maxItems": 1164
+            },
+            {
+              "minItems": 1166,
+              "maxItems": 1166
+            },
+            {
+              "minItems": 1168,
+              "maxItems": 1168
+            },
+            {
+              "minItems": 1170,
+              "maxItems": 1170
+            },
+            {
+              "minItems": 1172,
+              "maxItems": 1172
+            },
+            {
+              "minItems": 1174,
+              "maxItems": 1174
+            },
+            {
+              "minItems": 1176,
+              "maxItems": 1176
+            },
+            {
+              "minItems": 1178,
+              "maxItems": 1178
+            },
+            {
+              "minItems": 1180,
+              "maxItems": 1180
+            },
+            {
+              "minItems": 1182,
+              "maxItems": 1182
+            },
+            {
+              "minItems": 1184,
+              "maxItems": 1184
+            },
+            {
+              "minItems": 1186,
+              "maxItems": 1186
+            },
+            {
+              "minItems": 1188,
+              "maxItems": 1188
+            },
+            {
+              "minItems": 1190,
+              "maxItems": 1190
+            },
+            {
+              "minItems": 1192,
+              "maxItems": 1192
+            },
+            {
+              "minItems": 1194,
+              "maxItems": 1194
+            },
+            {
+              "minItems": 1196,
+              "maxItems": 1196
+            },
+            {
+              "minItems": 1198,
+              "maxItems": 1198
+            },
+            {
+              "minItems": 1200,
+              "maxItems": 1200
+            },
+            {
+              "minItems": 1202,
+              "maxItems": 1202
+            },
+            {
+              "minItems": 1204,
+              "maxItems": 1204
+            },
+            {
+              "minItems": 1206,
+              "maxItems": 1206
+            },
+            {
+              "minItems": 1208,
+              "maxItems": 1208
+            },
+            {
+              "minItems": 1210,
+              "maxItems": 1210
+            },
+            {
+              "minItems": 1212,
+              "maxItems": 1212
+            },
+            {
+              "minItems": 1214,
+              "maxItems": 1214
+            },
+            {
+              "minItems": 1216,
+              "maxItems": 1216
+            },
+            {
+              "minItems": 1218,
+              "maxItems": 1218
+            },
+            {
+              "minItems": 1220,
+              "maxItems": 1220
+            },
+            {
+              "minItems": 1222,
+              "maxItems": 1222
+            },
+            {
+              "minItems": 1224,
+              "maxItems": 1224
+            },
+            {
+              "minItems": 1226,
+              "maxItems": 1226
+            },
+            {
+              "minItems": 1228,
+              "maxItems": 1228
+            },
+            {
+              "minItems": 1230,
+              "maxItems": 1230
+            },
+            {
+              "minItems": 1232,
+              "maxItems": 1232
+            },
+            {
+              "minItems": 1234,
+              "maxItems": 1234
+            },
+            {
+              "minItems": 1236,
+              "maxItems": 1236
+            },
+            {
+              "minItems": 1238,
+              "maxItems": 1238
+            },
+            {
+              "minItems": 1240,
+              "maxItems": 1240
+            },
+            {
+              "minItems": 1242,
+              "maxItems": 1242
+            },
+            {
+              "minItems": 1244,
+              "maxItems": 1244
+            },
+            {
+              "minItems": 1246,
+              "maxItems": 1246
+            },
+            {
+              "minItems": 1248,
+              "maxItems": 1248
+            },
+            {
+              "minItems": 1250,
+              "maxItems": 1250
+            },
+            {
+              "minItems": 1252,
+              "maxItems": 1252
+            },
+            {
+              "minItems": 1254,
+              "maxItems": 1254
+            },
+            {
+              "minItems": 1256,
+              "maxItems": 1256
+            },
+            {
+              "minItems": 1258,
+              "maxItems": 1258
+            },
+            {
+              "minItems": 1260,
+              "maxItems": 1260
+            },
+            {
+              "minItems": 1262,
+              "maxItems": 1262
+            },
+            {
+              "minItems": 1264,
+              "maxItems": 1264
+            },
+            {
+              "minItems": 1266,
+              "maxItems": 1266
+            },
+            {
+              "minItems": 1268,
+              "maxItems": 1268
+            },
+            {
+              "minItems": 1270,
+              "maxItems": 1270
+            },
+            {
+              "minItems": 1272,
+              "maxItems": 1272
+            },
+            {
+              "minItems": 1274,
+              "maxItems": 1274
+            },
+            {
+              "minItems": 1276,
+              "maxItems": 1276
+            },
+            {
+              "minItems": 1278,
+              "maxItems": 1278
+            },
+            {
+              "minItems": 1280,
+              "maxItems": 1280
+            },
+            {
+              "minItems": 1282,
+              "maxItems": 1282
+            },
+            {
+              "minItems": 1284,
+              "maxItems": 1284
+            },
+            {
+              "minItems": 1286,
+              "maxItems": 1286
+            },
+            {
+              "minItems": 1288,
+              "maxItems": 1288
+            },
+            {
+              "minItems": 1290,
+              "maxItems": 1290
+            },
+            {
+              "minItems": 1292,
+              "maxItems": 1292
+            },
+            {
+              "minItems": 1294,
+              "maxItems": 1294
+            },
+            {
+              "minItems": 1296,
+              "maxItems": 1296
+            },
+            {
+              "minItems": 1298,
+              "maxItems": 1298
+            },
+            {
+              "minItems": 1300,
+              "maxItems": 1300
+            },
+            {
+              "minItems": 1302,
+              "maxItems": 1302
+            },
+            {
+              "minItems": 1304,
+              "maxItems": 1304
+            },
+            {
+              "minItems": 1306,
+              "maxItems": 1306
+            },
+            {
+              "minItems": 1308,
+              "maxItems": 1308
+            },
+            {
+              "minItems": 1310,
+              "maxItems": 1310
+            },
+            {
+              "minItems": 1312,
+              "maxItems": 1312
+            },
+            {
+              "minItems": 1314,
+              "maxItems": 1314
+            },
+            {
+              "minItems": 1316,
+              "maxItems": 1316
+            },
+            {
+              "minItems": 1318,
+              "maxItems": 1318
+            },
+            {
+              "minItems": 1320,
+              "maxItems": 1320
+            },
+            {
+              "minItems": 1322,
+              "maxItems": 1322
+            },
+            {
+              "minItems": 1324,
+              "maxItems": 1324
+            },
+            {
+              "minItems": 1326,
+              "maxItems": 1326
+            },
+            {
+              "minItems": 1328,
+              "maxItems": 1328
+            },
+            {
+              "minItems": 1330,
+              "maxItems": 1330
+            },
+            {
+              "minItems": 1332,
+              "maxItems": 1332
+            },
+            {
+              "minItems": 1334,
+              "maxItems": 1334
+            },
+            {
+              "minItems": 1336,
+              "maxItems": 1336
+            },
+            {
+              "minItems": 1338,
+              "maxItems": 1338
+            },
+            {
+              "minItems": 1340,
+              "maxItems": 1340
+            },
+            {
+              "minItems": 1342,
+              "maxItems": 1342
+            },
+            {
+              "minItems": 1344,
+              "maxItems": 1344
+            },
+            {
+              "minItems": 1346,
+              "maxItems": 1346
+            },
+            {
+              "minItems": 1348,
+              "maxItems": 1348
+            },
+            {
+              "minItems": 1350,
+              "maxItems": 1350
+            },
+            {
+              "minItems": 1352,
+              "maxItems": 1352
+            },
+            {
+              "minItems": 1354,
+              "maxItems": 1354
+            },
+            {
+              "minItems": 1356,
+              "maxItems": 1356
+            },
+            {
+              "minItems": 1358,
+              "maxItems": 1358
+            },
+            {
+              "minItems": 1360,
+              "maxItems": 1360
+            },
+            {
+              "minItems": 1362,
+              "maxItems": 1362
+            },
+            {
+              "minItems": 1364,
+              "maxItems": 1364
+            },
+            {
+              "minItems": 1366,
+              "maxItems": 1366
+            },
+            {
+              "minItems": 1368,
+              "maxItems": 1368
+            },
+            {
+              "minItems": 1370,
+              "maxItems": 1370
+            },
+            {
+              "minItems": 1372,
+              "maxItems": 1372
+            },
+            {
+              "minItems": 1374,
+              "maxItems": 1374
+            },
+            {
+              "minItems": 1376,
+              "maxItems": 1376
+            },
+            {
+              "minItems": 1378,
+              "maxItems": 1378
+            },
+            {
+              "minItems": 1380,
+              "maxItems": 1380
+            },
+            {
+              "minItems": 1382,
+              "maxItems": 1382
+            },
+            {
+              "minItems": 1384,
+              "maxItems": 1384
+            },
+            {
+              "minItems": 1386,
+              "maxItems": 1386
+            },
+            {
+              "minItems": 1388,
+              "maxItems": 1388
+            },
+            {
+              "minItems": 1390,
+              "maxItems": 1390
+            },
+            {
+              "minItems": 1392,
+              "maxItems": 1392
+            },
+            {
+              "minItems": 1394,
+              "maxItems": 1394
+            },
+            {
+              "minItems": 1396,
+              "maxItems": 1396
+            },
+            {
+              "minItems": 1398,
+              "maxItems": 1398
+            },
+            {
+              "minItems": 1400,
+              "maxItems": 1400
+            },
+            {
+              "minItems": 1402,
+              "maxItems": 1402
+            },
+            {
+              "minItems": 1404,
+              "maxItems": 1404
+            },
+            {
+              "minItems": 1406,
+              "maxItems": 1406
+            },
+            {
+              "minItems": 1408,
+              "maxItems": 1408
+            },
+            {
+              "minItems": 1410,
+              "maxItems": 1410
+            },
+            {
+              "minItems": 1412,
+              "maxItems": 1412
+            },
+            {
+              "minItems": 1414,
+              "maxItems": 1414
+            },
+            {
+              "minItems": 1416,
+              "maxItems": 1416
+            },
+            {
+              "minItems": 1418,
+              "maxItems": 1418
+            },
+            {
+              "minItems": 1420,
+              "maxItems": 1420
+            },
+            {
+              "minItems": 1422,
+              "maxItems": 1422
+            },
+            {
+              "minItems": 1424,
+              "maxItems": 1424
+            },
+            {
+              "minItems": 1426,
+              "maxItems": 1426
+            },
+            {
+              "minItems": 1428,
+              "maxItems": 1428
+            },
+            {
+              "minItems": 1430,
+              "maxItems": 1430
+            },
+            {
+              "minItems": 1432,
+              "maxItems": 1432
+            },
+            {
+              "minItems": 1434,
+              "maxItems": 1434
+            },
+            {
+              "minItems": 1436,
+              "maxItems": 1436
+            },
+            {
+              "minItems": 1438,
+              "maxItems": 1438
+            },
+            {
+              "minItems": 1440,
+              "maxItems": 1440
+            },
+            {
+              "minItems": 1442,
+              "maxItems": 1442
+            },
+            {
+              "minItems": 1444,
+              "maxItems": 1444
+            },
+            {
+              "minItems": 1446,
+              "maxItems": 1446
+            },
+            {
+              "minItems": 1448,
+              "maxItems": 1448
+            },
+            {
+              "minItems": 1450,
+              "maxItems": 1450
+            },
+            {
+              "minItems": 1452,
+              "maxItems": 1452
+            },
+            {
+              "minItems": 1454,
+              "maxItems": 1454
+            },
+            {
+              "minItems": 1456,
+              "maxItems": 1456
+            },
+            {
+              "minItems": 1458,
+              "maxItems": 1458
+            },
+            {
+              "minItems": 1460,
+              "maxItems": 1460
+            },
+            {
+              "minItems": 1462,
+              "maxItems": 1462
+            },
+            {
+              "minItems": 1464,
+              "maxItems": 1464
+            },
+            {
+              "minItems": 1466,
+              "maxItems": 1466
+            },
+            {
+              "minItems": 1468,
+              "maxItems": 1468
+            },
+            {
+              "minItems": 1470,
+              "maxItems": 1470
+            },
+            {
+              "minItems": 1472,
+              "maxItems": 1472
+            },
+            {
+              "minItems": 1474,
+              "maxItems": 1474
+            },
+            {
+              "minItems": 1476,
+              "maxItems": 1476
+            },
+            {
+              "minItems": 1478,
+              "maxItems": 1478
+            },
+            {
+              "minItems": 1480,
+              "maxItems": 1480
+            },
+            {
+              "minItems": 1482,
+              "maxItems": 1482
+            },
+            {
+              "minItems": 1484,
+              "maxItems": 1484
+            },
+            {
+              "minItems": 1486,
+              "maxItems": 1486
+            },
+            {
+              "minItems": 1488,
+              "maxItems": 1488
+            },
+            {
+              "minItems": 1490,
+              "maxItems": 1490
+            },
+            {
+              "minItems": 1492,
+              "maxItems": 1492
+            },
+            {
+              "minItems": 1494,
+              "maxItems": 1494
+            },
+            {
+              "minItems": 1496,
+              "maxItems": 1496
+            },
+            {
+              "minItems": 1498,
+              "maxItems": 1498
+            },
+            {
+              "minItems": 1500,
+              "maxItems": 1500
+            },
+            {
+              "minItems": 1502,
+              "maxItems": 1502
+            },
+            {
+              "minItems": 1504,
+              "maxItems": 1504
+            },
+            {
+              "minItems": 1506,
+              "maxItems": 1506
+            },
+            {
+              "minItems": 1508,
+              "maxItems": 1508
+            },
+            {
+              "minItems": 1510,
+              "maxItems": 1510
+            },
+            {
+              "minItems": 1512,
+              "maxItems": 1512
+            },
+            {
+              "minItems": 1514,
+              "maxItems": 1514
+            },
+            {
+              "minItems": 1516,
+              "maxItems": 1516
+            },
+            {
+              "minItems": 1518,
+              "maxItems": 1518
+            },
+            {
+              "minItems": 1520,
+              "maxItems": 1520
+            },
+            {
+              "minItems": 1522,
+              "maxItems": 1522
+            },
+            {
+              "minItems": 1524,
+              "maxItems": 1524
+            },
+            {
+              "minItems": 1526,
+              "maxItems": 1526
+            },
+            {
+              "minItems": 1528,
+              "maxItems": 1528
+            },
+            {
+              "minItems": 1530,
+              "maxItems": 1530
+            },
+            {
+              "minItems": 1532,
+              "maxItems": 1532
+            },
+            {
+              "minItems": 1534,
+              "maxItems": 1534
+            },
+            {
+              "minItems": 1536,
+              "maxItems": 1536
+            },
+            {
+              "minItems": 1538,
+              "maxItems": 1538
+            },
+            {
+              "minItems": 1540,
+              "maxItems": 1540
+            },
+            {
+              "minItems": 1542,
+              "maxItems": 1542
+            },
+            {
+              "minItems": 1544,
+              "maxItems": 1544
+            },
+            {
+              "minItems": 1546,
+              "maxItems": 1546
+            },
+            {
+              "minItems": 1548,
+              "maxItems": 1548
+            },
+            {
+              "minItems": 1550,
+              "maxItems": 1550
+            },
+            {
+              "minItems": 1552,
+              "maxItems": 1552
+            },
+            {
+              "minItems": 1554,
+              "maxItems": 1554
+            },
+            {
+              "minItems": 1556,
+              "maxItems": 1556
+            },
+            {
+              "minItems": 1558,
+              "maxItems": 1558
+            },
+            {
+              "minItems": 1560,
+              "maxItems": 1560
+            },
+            {
+              "minItems": 1562,
+              "maxItems": 1562
+            },
+            {
+              "minItems": 1564,
+              "maxItems": 1564
+            },
+            {
+              "minItems": 1566,
+              "maxItems": 1566
+            },
+            {
+              "minItems": 1568,
+              "maxItems": 1568
+            },
+            {
+              "minItems": 1570,
+              "maxItems": 1570
+            },
+            {
+              "minItems": 1572,
+              "maxItems": 1572
+            },
+            {
+              "minItems": 1574,
+              "maxItems": 1574
+            },
+            {
+              "minItems": 1576,
+              "maxItems": 1576
+            },
+            {
+              "minItems": 1578,
+              "maxItems": 1578
+            },
+            {
+              "minItems": 1580,
+              "maxItems": 1580
+            },
+            {
+              "minItems": 1582,
+              "maxItems": 1582
+            },
+            {
+              "minItems": 1584,
+              "maxItems": 1584
+            },
+            {
+              "minItems": 1586,
+              "maxItems": 1586
+            },
+            {
+              "minItems": 1588,
+              "maxItems": 1588
+            },
+            {
+              "minItems": 1590,
+              "maxItems": 1590
+            },
+            {
+              "minItems": 1592,
+              "maxItems": 1592
+            },
+            {
+              "minItems": 1594,
+              "maxItems": 1594
+            },
+            {
+              "minItems": 1596,
+              "maxItems": 1596
+            },
+            {
+              "minItems": 1598,
+              "maxItems": 1598
+            },
+            {
+              "minItems": 1600,
+              "maxItems": 1600
+            },
+            {
+              "minItems": 1602,
+              "maxItems": 1602
+            },
+            {
+              "minItems": 1604,
+              "maxItems": 1604
+            },
+            {
+              "minItems": 1606,
+              "maxItems": 1606
+            },
+            {
+              "minItems": 1608,
+              "maxItems": 1608
+            },
+            {
+              "minItems": 1610,
+              "maxItems": 1610
+            },
+            {
+              "minItems": 1612,
+              "maxItems": 1612
+            },
+            {
+              "minItems": 1614,
+              "maxItems": 1614
+            },
+            {
+              "minItems": 1616,
+              "maxItems": 1616
+            },
+            {
+              "minItems": 1618,
+              "maxItems": 1618
+            },
+            {
+              "minItems": 1620,
+              "maxItems": 1620
+            },
+            {
+              "minItems": 1622,
+              "maxItems": 1622
+            },
+            {
+              "minItems": 1624,
+              "maxItems": 1624
+            },
+            {
+              "minItems": 1626,
+              "maxItems": 1626
+            },
+            {
+              "minItems": 1628,
+              "maxItems": 1628
+            },
+            {
+              "minItems": 1630,
+              "maxItems": 1630
+            },
+            {
+              "minItems": 1632,
+              "maxItems": 1632
+            },
+            {
+              "minItems": 1634,
+              "maxItems": 1634
+            },
+            {
+              "minItems": 1636,
+              "maxItems": 1636
+            },
+            {
+              "minItems": 1638,
+              "maxItems": 1638
+            },
+            {
+              "minItems": 1640,
+              "maxItems": 1640
+            },
+            {
+              "minItems": 1642,
+              "maxItems": 1642
+            },
+            {
+              "minItems": 1644,
+              "maxItems": 1644
+            },
+            {
+              "minItems": 1646,
+              "maxItems": 1646
+            },
+            {
+              "minItems": 1648,
+              "maxItems": 1648
+            },
+            {
+              "minItems": 1650,
+              "maxItems": 1650
+            },
+            {
+              "minItems": 1652,
+              "maxItems": 1652
+            },
+            {
+              "minItems": 1654,
+              "maxItems": 1654
+            },
+            {
+              "minItems": 1656,
+              "maxItems": 1656
+            },
+            {
+              "minItems": 1658,
+              "maxItems": 1658
+            },
+            {
+              "minItems": 1660,
+              "maxItems": 1660
+            },
+            {
+              "minItems": 1662,
+              "maxItems": 1662
+            },
+            {
+              "minItems": 1664,
+              "maxItems": 1664
+            },
+            {
+              "minItems": 1666,
+              "maxItems": 1666
+            },
+            {
+              "minItems": 1668,
+              "maxItems": 1668
+            },
+            {
+              "minItems": 1670,
+              "maxItems": 1670
+            },
+            {
+              "minItems": 1672,
+              "maxItems": 1672
+            },
+            {
+              "minItems": 1674,
+              "maxItems": 1674
+            },
+            {
+              "minItems": 1676,
+              "maxItems": 1676
+            },
+            {
+              "minItems": 1678,
+              "maxItems": 1678
+            },
+            {
+              "minItems": 1680,
+              "maxItems": 1680
+            },
+            {
+              "minItems": 1682,
+              "maxItems": 1682
+            },
+            {
+              "minItems": 1684,
+              "maxItems": 1684
+            },
+            {
+              "minItems": 1686,
+              "maxItems": 1686
+            },
+            {
+              "minItems": 1688,
+              "maxItems": 1688
+            },
+            {
+              "minItems": 1690,
+              "maxItems": 1690
+            },
+            {
+              "minItems": 1692,
+              "maxItems": 1692
+            },
+            {
+              "minItems": 1694,
+              "maxItems": 1694
+            },
+            {
+              "minItems": 1696,
+              "maxItems": 1696
+            },
+            {
+              "minItems": 1698,
+              "maxItems": 1698
+            },
+            {
+              "minItems": 1700,
+              "maxItems": 1700
+            },
+            {
+              "minItems": 1702,
+              "maxItems": 1702
+            },
+            {
+              "minItems": 1704,
+              "maxItems": 1704
+            },
+            {
+              "minItems": 1706,
+              "maxItems": 1706
+            },
+            {
+              "minItems": 1708,
+              "maxItems": 1708
+            },
+            {
+              "minItems": 1710,
+              "maxItems": 1710
+            },
+            {
+              "minItems": 1712,
+              "maxItems": 1712
+            },
+            {
+              "minItems": 1714,
+              "maxItems": 1714
+            },
+            {
+              "minItems": 1716,
+              "maxItems": 1716
+            },
+            {
+              "minItems": 1718,
+              "maxItems": 1718
+            },
+            {
+              "minItems": 1720,
+              "maxItems": 1720
+            },
+            {
+              "minItems": 1722,
+              "maxItems": 1722
+            },
+            {
+              "minItems": 1724,
+              "maxItems": 1724
+            },
+            {
+              "minItems": 1726,
+              "maxItems": 1726
+            },
+            {
+              "minItems": 1728,
+              "maxItems": 1728
+            },
+            {
+              "minItems": 1730,
+              "maxItems": 1730
+            },
+            {
+              "minItems": 1732,
+              "maxItems": 1732
+            },
+            {
+              "minItems": 1734,
+              "maxItems": 1734
+            },
+            {
+              "minItems": 1736,
+              "maxItems": 1736
+            },
+            {
+              "minItems": 1738,
+              "maxItems": 1738
+            },
+            {
+              "minItems": 1740,
+              "maxItems": 1740
+            },
+            {
+              "minItems": 1742,
+              "maxItems": 1742
+            },
+            {
+              "minItems": 1744,
+              "maxItems": 1744
+            },
+            {
+              "minItems": 1746,
+              "maxItems": 1746
+            },
+            {
+              "minItems": 1748,
+              "maxItems": 1748
+            },
+            {
+              "minItems": 1750,
+              "maxItems": 1750
+            },
+            {
+              "minItems": 1752,
+              "maxItems": 1752
+            },
+            {
+              "minItems": 1754,
+              "maxItems": 1754
+            },
+            {
+              "minItems": 1756,
+              "maxItems": 1756
+            },
+            {
+              "minItems": 1758,
+              "maxItems": 1758
+            },
+            {
+              "minItems": 1760,
+              "maxItems": 1760
+            },
+            {
+              "minItems": 1762,
+              "maxItems": 1762
+            },
+            {
+              "minItems": 1764,
+              "maxItems": 1764
+            },
+            {
+              "minItems": 1766,
+              "maxItems": 1766
+            },
+            {
+              "minItems": 1768,
+              "maxItems": 1768
+            },
+            {
+              "minItems": 1770,
+              "maxItems": 1770
+            },
+            {
+              "minItems": 1772,
+              "maxItems": 1772
+            },
+            {
+              "minItems": 1774,
+              "maxItems": 1774
+            },
+            {
+              "minItems": 1776,
+              "maxItems": 1776
+            },
+            {
+              "minItems": 1778,
+              "maxItems": 1778
+            },
+            {
+              "minItems": 1780,
+              "maxItems": 1780
+            },
+            {
+              "minItems": 1782,
+              "maxItems": 1782
+            },
+            {
+              "minItems": 1784,
+              "maxItems": 1784
+            },
+            {
+              "minItems": 1786,
+              "maxItems": 1786
+            },
+            {
+              "minItems": 1788,
+              "maxItems": 1788
+            },
+            {
+              "minItems": 1790,
+              "maxItems": 1790
+            },
+            {
+              "minItems": 1792,
+              "maxItems": 1792
+            },
+            {
+              "minItems": 1794,
+              "maxItems": 1794
+            },
+            {
+              "minItems": 1796,
+              "maxItems": 1796
+            },
+            {
+              "minItems": 1798,
+              "maxItems": 1798
+            },
+            {
+              "minItems": 1800,
+              "maxItems": 1800
+            },
+            {
+              "minItems": 1802,
+              "maxItems": 1802
+            },
+            {
+              "minItems": 1804,
+              "maxItems": 1804
+            },
+            {
+              "minItems": 1806,
+              "maxItems": 1806
+            },
+            {
+              "minItems": 1808,
+              "maxItems": 1808
+            },
+            {
+              "minItems": 1810,
+              "maxItems": 1810
+            },
+            {
+              "minItems": 1812,
+              "maxItems": 1812
+            },
+            {
+              "minItems": 1814,
+              "maxItems": 1814
+            },
+            {
+              "minItems": 1816,
+              "maxItems": 1816
+            },
+            {
+              "minItems": 1818,
+              "maxItems": 1818
+            },
+            {
+              "minItems": 1820,
+              "maxItems": 1820
+            },
+            {
+              "minItems": 1822,
+              "maxItems": 1822
+            },
+            {
+              "minItems": 1824,
+              "maxItems": 1824
+            },
+            {
+              "minItems": 1826,
+              "maxItems": 1826
+            },
+            {
+              "minItems": 1828,
+              "maxItems": 1828
+            },
+            {
+              "minItems": 1830,
+              "maxItems": 1830
+            },
+            {
+              "minItems": 1832,
+              "maxItems": 1832
+            },
+            {
+              "minItems": 1834,
+              "maxItems": 1834
+            },
+            {
+              "minItems": 1836,
+              "maxItems": 1836
+            },
+            {
+              "minItems": 1838,
+              "maxItems": 1838
+            },
+            {
+              "minItems": 1840,
+              "maxItems": 1840
+            },
+            {
+              "minItems": 1842,
+              "maxItems": 1842
+            },
+            {
+              "minItems": 1844,
+              "maxItems": 1844
+            },
+            {
+              "minItems": 1846,
+              "maxItems": 1846
+            },
+            {
+              "minItems": 1848,
+              "maxItems": 1848
+            },
+            {
+              "minItems": 1850,
+              "maxItems": 1850
+            },
+            {
+              "minItems": 1852,
+              "maxItems": 1852
+            },
+            {
+              "minItems": 1854,
+              "maxItems": 1854
+            },
+            {
+              "minItems": 1856,
+              "maxItems": 1856
+            },
+            {
+              "minItems": 1858,
+              "maxItems": 1858
+            },
+            {
+              "minItems": 1860,
+              "maxItems": 1860
+            },
+            {
+              "minItems": 1862,
+              "maxItems": 1862
+            },
+            {
+              "minItems": 1864,
+              "maxItems": 1864
+            },
+            {
+              "minItems": 1866,
+              "maxItems": 1866
+            },
+            {
+              "minItems": 1868,
+              "maxItems": 1868
+            },
+            {
+              "minItems": 1870,
+              "maxItems": 1870
+            },
+            {
+              "minItems": 1872,
+              "maxItems": 1872
+            },
+            {
+              "minItems": 1874,
+              "maxItems": 1874
+            },
+            {
+              "minItems": 1876,
+              "maxItems": 1876
+            },
+            {
+              "minItems": 1878,
+              "maxItems": 1878
+            },
+            {
+              "minItems": 1880,
+              "maxItems": 1880
+            },
+            {
+              "minItems": 1882,
+              "maxItems": 1882
+            },
+            {
+              "minItems": 1884,
+              "maxItems": 1884
+            },
+            {
+              "minItems": 1886,
+              "maxItems": 1886
+            },
+            {
+              "minItems": 1888,
+              "maxItems": 1888
+            },
+            {
+              "minItems": 1890,
+              "maxItems": 1890
+            },
+            {
+              "minItems": 1892,
+              "maxItems": 1892
+            },
+            {
+              "minItems": 1894,
+              "maxItems": 1894
+            },
+            {
+              "minItems": 1896,
+              "maxItems": 1896
+            },
+            {
+              "minItems": 1898,
+              "maxItems": 1898
+            },
+            {
+              "minItems": 1900,
+              "maxItems": 1900
+            },
+            {
+              "minItems": 1902,
+              "maxItems": 1902
+            },
+            {
+              "minItems": 1904,
+              "maxItems": 1904
+            },
+            {
+              "minItems": 1906,
+              "maxItems": 1906
+            },
+            {
+              "minItems": 1908,
+              "maxItems": 1908
+            },
+            {
+              "minItems": 1910,
+              "maxItems": 1910
+            },
+            {
+              "minItems": 1912,
+              "maxItems": 1912
+            },
+            {
+              "minItems": 1914,
+              "maxItems": 1914
+            },
+            {
+              "minItems": 1916,
+              "maxItems": 1916
+            },
+            {
+              "minItems": 1918,
+              "maxItems": 1918
+            },
+            {
+              "minItems": 1920,
+              "maxItems": 1920
+            },
+            {
+              "minItems": 1922,
+              "maxItems": 1922
+            },
+            {
+              "minItems": 1924,
+              "maxItems": 1924
+            },
+            {
+              "minItems": 1926,
+              "maxItems": 1926
+            },
+            {
+              "minItems": 1928,
+              "maxItems": 1928
+            },
+            {
+              "minItems": 1930,
+              "maxItems": 1930
+            },
+            {
+              "minItems": 1932,
+              "maxItems": 1932
+            },
+            {
+              "minItems": 1934,
+              "maxItems": 1934
+            },
+            {
+              "minItems": 1936,
+              "maxItems": 1936
+            },
+            {
+              "minItems": 1938,
+              "maxItems": 1938
+            },
+            {
+              "minItems": 1940,
+              "maxItems": 1940
+            },
+            {
+              "minItems": 1942,
+              "maxItems": 1942
+            },
+            {
+              "minItems": 1944,
+              "maxItems": 1944
+            },
+            {
+              "minItems": 1946,
+              "maxItems": 1946
+            },
+            {
+              "minItems": 1948,
+              "maxItems": 1948
+            },
+            {
+              "minItems": 1950,
+              "maxItems": 1950
+            },
+            {
+              "minItems": 1952,
+              "maxItems": 1952
+            },
+            {
+              "minItems": 1954,
+              "maxItems": 1954
+            },
+            {
+              "minItems": 1956,
+              "maxItems": 1956
+            },
+            {
+              "minItems": 1958,
+              "maxItems": 1958
+            },
+            {
+              "minItems": 1960,
+              "maxItems": 1960
+            },
+            {
+              "minItems": 1962,
+              "maxItems": 1962
+            },
+            {
+              "minItems": 1964,
+              "maxItems": 1964
+            },
+            {
+              "minItems": 1966,
+              "maxItems": 1966
+            },
+            {
+              "minItems": 1968,
+              "maxItems": 1968
+            },
+            {
+              "minItems": 1970,
+              "maxItems": 1970
+            },
+            {
+              "minItems": 1972,
+              "maxItems": 1972
+            },
+            {
+              "minItems": 1974,
+              "maxItems": 1974
+            },
+            {
+              "minItems": 1976,
+              "maxItems": 1976
+            },
+            {
+              "minItems": 1978,
+              "maxItems": 1978
+            },
+            {
+              "minItems": 1980,
+              "maxItems": 1980
+            },
+            {
+              "minItems": 1982,
+              "maxItems": 1982
+            },
+            {
+              "minItems": 1984,
+              "maxItems": 1984
+            },
+            {
+              "minItems": 1986,
+              "maxItems": 1986
+            },
+            {
+              "minItems": 1988,
+              "maxItems": 1988
+            },
+            {
+              "minItems": 1990,
+              "maxItems": 1990
+            },
+            {
+              "minItems": 1992,
+              "maxItems": 1992
+            },
+            {
+              "minItems": 1994,
+              "maxItems": 1994
+            },
+            {
+              "minItems": 1996,
+              "maxItems": 1996
+            },
+            {
+              "minItems": 1998,
+              "maxItems": 1998
+            },
+            {
+              "minItems": 2000,
+              "maxItems": 2000
+            }
+          ],
+          "tsType": "number[]"
+        }
+      },
+      "additionalProperties": false
+    },
+    "areaStyle": {
+      "type": "object",
+      "required": [
+        "fillOpacity",
+        "strokeWidth"
+      ],
+      "properties": {
+        "fillOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "strokeWidth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 50
+        },
+        "fill": {
+          "type": "string"
+        },
+        "stroke": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "area": {
+      "type": "object",
+      "required": [
+        "id",
+        "area_id",
+        "shape",
+        "tags",
+        "style"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "area_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shape": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/rectShape"
+            },
+            {
+              "$ref": "#/$defs/polygonShape"
+            }
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "style": {
+          "$ref": "#/$defs/areaStyle"
+        }
+      },
+      "additionalProperties": false
+    },
+    "valueBinding": {
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "state",
+            "attr"
+          ]
+        },
+        "attr": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "attr"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attr"
+            ],
+            "properties": {
+              "attr": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "marker": {
+      "type": "object",
+      "required": [
+        "id",
+        "entity_id",
+        "pos",
+        "label_mode",
+        "tags",
+        "bind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "area_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pos": {
+          "type": "object",
+          "required": [
+            "x",
+            "y"
+          ],
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "icon": {
+          "type": "string"
+        },
+        "label_mode": {
+          "enum": [
+            "off",
+            "short",
+            "full",
+            "auto"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "bind": {
+          "type": "object",
+          "required": [
+            "primary"
+          ],
+          "properties": {
+            "primary": {
+              "$ref": "#/$defs/valueBinding"
+            },
+            "secondary": {
+              "$ref": "#/$defs/valueBinding"
+            }
+          },
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "object",
+          "properties": {
+            "tap": {
+              "enum": [
+                "more-info",
+                "toggle",
+                "none"
+              ]
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "plan": {
+      "type": "object",
+      "required": [
+        "plan_id",
+        "name",
+        "background",
+        "areas",
+        "markers",
+        "view"
+      ],
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "background": {
+          "$ref": "#/$defs/background"
+        },
+        "areas": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/area"
+          }
+        },
+        "markers": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/marker"
+          }
+        },
+        "view": {
+          "type": "object",
+          "required": [
+            "minZoom",
+            "maxZoom"
+          ],
+          "properties": {
+            "minZoom": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "maxZoom": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "area_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "valueSpec": {
+      "type": "object",
+      "required": [
+        "mode",
+        "entity_id",
+        "source"
+      ],
+      "properties": {
+        "mode": {
+          "const": "entity"
+        },
+        "entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "enum": [
+            "state",
+            "attr"
+          ]
+        },
+        "attr": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "attr"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attr"
+            ],
+            "properties": {
+              "attr": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "badge": {
+      "type": "object",
+      "required": [
+        "entity_id",
+        "when"
+      ],
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "when": {
+          "type": "object",
+          "required": [
+            "state_is"
+          ],
+          "properties": {
+            "state_is": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "icon": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "overlay": {
+      "type": "object",
+      "properties": {
+        "primary": {
+          "$ref": "#/$defs/valueSpec"
+        },
+        "secondary": {
+          "$ref": "#/$defs/valueSpec"
+        },
+        "badges": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/badge"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "view": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "filters"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "filters": {
+          "$ref": "#/$defs/filters"
+        },
+        "area_overlay": {
+          "$ref": "#/$defs/overlay"
+        },
+        "marker_overlay": {
+          "$ref": "#/$defs/overlay"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -259,6 +259,57 @@ export const floorplanPanelStyles = css`
     opacity: 0.85;
   }
 
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  .canvas-container:focus-visible {
+    outline: 3px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+
+  .canvas-container {
+    touch-action: none;
+  }
+
+  .canvas-accessibility {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .narrow .toolbar,
+  .narrow .toolbar-left,
+  .narrow .edit-toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .narrow .toolbar,
+  .narrow .toolbar-left {
+    gap: 8px;
+  }
+
+  .narrow .view-tabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .narrow button,
+  .narrow select,
+  .narrow input {
+    min-height: 44px;
+  }
+
+  .narrow .edit-toolbar {
+    overflow-x: auto;
+  }
+
   @media (max-width: 900px) {
     .toolbar,
     .toolbar-left,

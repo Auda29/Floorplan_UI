@@ -12,6 +12,8 @@
     "lint:fix": "eslint \"src/**/*.{ts,tsx}\" --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "schema:generate": "json2ts -i ../schema/floorplan-config.schema.json -o src/types/floorplan-config.generated.ts --maxItems -1 --bannerComment '/* AUTO-GENERATED from schema/floorplan-config.schema.json. DO NOT EDIT. */'",
     "format": "prettier --write src",
     "format:check": "prettier --check src"
   },
@@ -21,14 +23,17 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.54.2",
     "@types/node": "^20.11.0",
-    "typescript": "^5.3.3",
-    "vite": "^5.0.12",
     "@typescript-eslint/eslint-plugin": "^8.65.0",
     "@typescript-eslint/parser": "^8.65.0",
     "eslint": "^9.39.5",
     "globals": "^16.5.0",
+    "jsdom": "26.1.0",
+    "json-schema-to-typescript": "15.0.4",
     "prettier": "^3.2.4",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12",
     "vitest": "^3.2.4"
   }
 }

@@ -196,7 +196,7 @@ function addPolygonAnchors(
   line: Konva.Line,
   options: AreaRenderOptions
 ): void {
-  if (!area.shape.points) return;
+  if (area.shape.type !== "polygon") return;
   const points = [...area.shape.points];
   const originX = area.shape.x ?? 0;
   const originY = area.shape.y ?? 0;

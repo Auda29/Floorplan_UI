@@ -4,9 +4,9 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** public alpha (current release: `0.1.2`). It is intentionally available
-> as a regular release to custom HACS repository users. Back up your Home Assistant
-> configuration before testing it with production data.
+> **Status:** public alpha (current release: `0.1.2`) on a hardened beta foundation.
+> The next version remains unreleased until the release commit passes every CI and
+> Home Assistant matrix check. Back up production data while testing `0.x` releases.
 
 ## Current capabilities
 
@@ -28,11 +28,23 @@ sidebar panel with separate view and admin-only edit modes.
 - Persist the versioned configuration through the HA Storage API.
 - Keep view mode available to users while restricting all editor writes and
   registry access to Home Assistant administrators.
+- Fully decode PNG/JPEG uploads server-side and enforce file, dimension, and
+  pixel-count limits before private storage.
+- Garbage-collect unreferenced managed assets after successful saves, with a
+  seven-day grace period and per-file fault isolation.
+- Generate central TypeScript configuration types from a versioned Draft 2020-12
+  JSON Schema.
+- Localize the central panel/editor UI in English and German according to the
+  Home Assistant language.
+- Support responsive `narrow` layouts, touch panning and pinch zoom, keyboard
+  undo/redo/delete actions, live regions, focus indicators, and an accessible
+  canvas object list.
 
-The `0.1.x` scope is intentionally an alpha: undo/redo, localization, touch-first
-editor polish, aggregate area calculations, and a dedicated warning center remain
-planned work. Missing or unavailable entities remain visible with an unavailable
-value and neutral marker color.
+The `0.1.x` scope remains an alpha until the hardened branch has passed its final
+GitHub Actions run and independent review and is published as a new release.
+Further incremental module decomposition, aggregate area calculations, and a
+dedicated warning center remain follow-up work. Missing or unavailable entities
+remain visible with an unavailable value and neutral marker color.
 
 ## Installation with HACS
 
@@ -47,35 +59,46 @@ value and neutral marker color.
 All runtime files, including the compiled panel bundle, live inside
 `custom_components/floorplan_ui/`, so no manual `/config/www` copy is required.
 
-Minimum supported Home Assistant version: **2025.7.0**.
+Minimum supported Home Assistant version: **2025.7.3**. CI additionally checks a
+current Home Assistant/Python combination.
 
 ## Local development
 
-Requirements: Node.js 22+, pnpm 11.9, Docker with Compose.
+Requirements: Node.js 22+, Corepack/pnpm 11.9, Python 3.13+, and Docker with Compose.
 
 ```text
+python -m pip install -r requirements-dev.txt
+ruff check custom_components/floorplan_ui tests tests_ha
+ruff format --check custom_components/floorplan_ui tests tests_ha
+mypy custom_components/floorplan_ui
+coverage run -m unittest discover -s tests
+coverage report
+
 cd frontend
-pnpm install --frozen-lockfile
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+corepack pnpm install --frozen-lockfile
+corepack pnpm schema:generate
+corepack pnpm format:check
+corepack pnpm lint
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
+corepack pnpm exec playwright install --with-deps chromium
+corepack pnpm test:e2e
 cd ..
 docker compose up -d
 ```
 
 The build writes the deployable bundle to
-`custom_components/floorplan_ui/frontend/floorplan-ui.js`. Docker mounts the
-entire `custom_components` directory and exposes Home Assistant on
-`http://localhost:8124`.
+`custom_components/floorplan_ui/frontend/floorplan-ui.js`. The Playwright smoke
+loads that real production bundle in Chromium and exercises upload, save, edit,
+and remount/reload. Docker mounts the entire `custom_components` directory and
+exposes Home Assistant on `http://localhost:8124`.
 
-Backend checks use only the bundled Python standard library:
-
-```text
-python -m unittest discover -s tests
-python -m compileall -q custom_components/floorplan_ui
-```
+CI also rejects schema/type drift and stale committed bundles, uploads unit and
+Home Assistant coverage reports, and runs HACS and Hassfest validation. The
+machine-readable configuration contract lives at
+`schema/floorplan-config.schema.json`; do not edit the generated TypeScript types
+manually.
 
 ## Releases and changelog
 
@@ -115,14 +138,25 @@ The product requirements and architectural decisions are documented under
 
 The panel itself is visible in read-only mode to authenticated Home Assistant
 users. Saving configuration, uploading images, and reading the full Area/Entity
-registries require an administrator connection. Image bytes are validated
-server-side against the declared PNG/JPEG type and a 4 MB per-file limit before
-being stored privately. Configuration writes use revision checks to prevent one
-administrator tab from silently overwriting another; the complete persisted
-configuration is limited to 20 MB.
+registries require an administrator connection. Upload request bodies are read in
+bounded chunks and rejected above 4 MB. Pillow must fully decode every image as
+PNG or JPEG; MIME/format mismatches, truncated files, decompression bombs,
+dimensions above 16,384 × 16,384, and images above 64 million pixels are rejected.
+CPU-intensive image decoding and hashing run outside Home Assistant's event loop.
+
+Images are private content-addressed assets with exact 64-character lowercase
+SHA-256 IDs. Garbage collection only considers managed `.png`/`.jpg` files, keeps
+referenced assets, applies a seven-day grace period, and runs only after successful
+configuration persistence. One deletion failure cannot roll back or abort a save.
+Configuration writes use revision checks to prevent one administrator tab from
+silently overwriting another; the complete persisted configuration is limited to
+20 MB. Polygon shapes are limited to 1,000 coordinate pairs and must contain a
+complete sequence of x/y pairs.
 
 JSON exports remain portable: referenced images are embedded in the downloaded
-backup and uploaded into the private asset store again during import.
+backup and uploaded into the private asset store again during import. Import data
+is structurally validated before migration, and supported migrations work on
+copies rather than mutating the submitted object.
 
 Report security or functional issues through the repository's
 [issue tracker](https://github.com/Auda29/Floorplan_UI/issues).

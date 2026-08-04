@@ -41,8 +41,15 @@ describe("area config", () => {
     const updated = updateAreaShape(withArea, "plan-1", "area-1", { width: 300 });
 
     expect(original.plans[0].areas).toEqual([]);
-    expect(withArea.plans[0].areas[0].shape.width).toBe(240);
-    expect(updated.plans[0].areas[0].shape.width).toBe(300);
+    const beforeShape = withArea.plans[0].areas[0].shape;
+    const afterShape = updated.plans[0].areas[0].shape;
+    expect(beforeShape.type).toBe("rect");
+    expect(afterShape.type).toBe("rect");
+    if (beforeShape.type !== "rect" || afterShape.type !== "rect") {
+      throw new Error("Expected rectangle geometry");
+    }
+    expect(beforeShape.width).toBe(240);
+    expect(afterShape.width).toBe(300);
   });
 
   it("updates area metadata and removes the area", () => {

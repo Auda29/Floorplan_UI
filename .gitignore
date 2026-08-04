@@ -18,6 +18,8 @@ dist/
 build/
 out/
 .next/
+frontend/playwright-report/
+frontend/test-results/
 
 # Environment variables
 .env
@@ -40,8 +42,14 @@ yarn-error.log*
 ha_config/
 
 # Python
+.venv*/
 __pycache__/
 *.py[cod]
 *$py.class
 .Python
 *.so
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/

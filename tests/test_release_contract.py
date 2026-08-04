@@ -7,7 +7,6 @@ import re
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -16,16 +15,10 @@ class ReleaseContractTests(unittest.TestCase):
 
     def test_versions_match(self) -> None:
         manifest = json.loads(
-            (ROOT / "custom_components/floorplan_ui/manifest.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "custom_components/floorplan_ui/manifest.json").read_text(encoding="utf-8")
         )
-        package = json.loads(
-            (ROOT / "frontend/package.json").read_text(encoding="utf-8")
-        )
-        constants = (ROOT / "custom_components/floorplan_ui/const.py").read_text(
-            encoding="utf-8"
-        )
+        package = json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))
+        constants = (ROOT / "custom_components/floorplan_ui/const.py").read_text(encoding="utf-8")
         match = re.search(r'^INTEGRATION_VERSION = "([^"]+)"$', constants, re.MULTILINE)
 
         self.assertIsNotNone(match)

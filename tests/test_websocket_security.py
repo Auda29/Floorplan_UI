@@ -31,7 +31,7 @@ class WebSocketSecurityTests(unittest.TestCase):
         handlers = {
             node.name: {_decorator_name(decorator) for decorator in node.decorator_list}
             for node in module.body
-            if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
+            if isinstance(node, ast.AsyncFunctionDef | ast.FunctionDef)
         }
 
         for handler in (
