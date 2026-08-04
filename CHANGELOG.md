@@ -6,6 +6,16 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-08-04
+
+### Fixed
+
+- Replace the full-width editor rows with a theme-aware, responsive side panel so
+  editing no longer washes out labels, pushes the canvas below the controls, or
+  causes horizontal overflow. Group advanced plan, view, and overlay settings in
+  keyboard-accessible disclosure sections while preserving 44 px narrow-mode
+  touch targets.
+
 ## [0.2.0-beta.1] - 2026-08-04
 
 ### Beta hardening
