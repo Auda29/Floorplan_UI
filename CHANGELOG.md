@@ -6,6 +6,15 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0-beta.3] - 2026-08-04
+
+### Fixed
+
+- Preserve native HTML drag-and-drop while adding a pointer-based fallback so
+  markers can be placed reliably with mouse, touch, pen, and embedded browser
+  WebViews. Touch users can still scroll the entity palette with a swipe and
+  place a marker by briefly holding before dragging.
+
 ## [0.2.0-beta.2] - 2026-08-04
 
 ### Fixed

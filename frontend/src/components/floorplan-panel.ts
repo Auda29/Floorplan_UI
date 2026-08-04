@@ -69,6 +69,23 @@ import { type PanelDialog, type PanelDialogResult } from "./floorplan-dialog";
 import "./floorplan-dialog";
 
 const LIVE_REFRESH_DELAY_MS = 500;
+const ENTITY_POINTER_DRAG_THRESHOLD_PX = 6;
+const ENTITY_TOUCH_DRAG_HOLD_MS = 250;
+
+interface EntityPointerDrag {
+  entityId: string;
+  pointerId: number;
+  pointerType: string;
+  target: HTMLElement;
+  palette: HTMLElement | null;
+  startX: number;
+  startY: number;
+  startScrollTop: number;
+  ready: boolean;
+  scrolling: boolean;
+  holdTimer: number | null;
+  active: boolean;
+}
 
 export class FloorplanPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -104,6 +121,7 @@ export class FloorplanPanel extends LitElement {
   private _markerGroups: Map<string, Konva.Group> = new Map();
   private _renderGeneration = 0;
   private _liveRefreshTimer: number | null = null;
+  private _entityPointerDrag: EntityPointerDrag | null = null;
   private readonly _history = new ConfigHistory();
   private _dialogResolver: ((value: string | boolean | null) => void) | null = null;
   private readonly _saveQueue = new ConfigSaveQueue(
@@ -123,6 +141,10 @@ export class FloorplanPanel extends LitElement {
     event.preventDefault();
     event.returnValue = "";
   };
+  private readonly _entityPointerMove = (event: PointerEvent) => this._onEntityPointerMove(event);
+  private readonly _entityPointerUp = (event: PointerEvent) => this._onEntityPointerUp(event);
+  private readonly _entityPointerCancel = (event: PointerEvent) =>
+    this._onEntityPointerCancel(event);
 
   private get _canEdit(): boolean {
     return this.hass?.user?.is_admin === true;
@@ -137,6 +159,9 @@ export class FloorplanPanel extends LitElement {
   async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("beforeunload", this._beforeUnload);
+    window.addEventListener("pointermove", this._entityPointerMove, { passive: false });
+    window.addEventListener("pointerup", this._entityPointerUp);
+    window.addEventListener("pointercancel", this._entityPointerCancel);
     await this._loadConfig();
     if (this._canEdit) {
       await this._loadRegistry();
@@ -146,6 +171,10 @@ export class FloorplanPanel extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("beforeunload", this._beforeUnload);
+    window.removeEventListener("pointermove", this._entityPointerMove);
+    window.removeEventListener("pointerup", this._entityPointerUp);
+    window.removeEventListener("pointercancel", this._entityPointerCancel);
+    this._finishEntityPointerDrag();
     this._resolveDialog(null);
     if (this._liveRefreshTimer !== null) {
       window.clearTimeout(this._liveRefreshTimer);
@@ -462,6 +491,7 @@ export class FloorplanPanel extends LitElement {
     if (!this._canEdit) return;
     this._editMode = !this._editMode;
     if (!this._editMode) {
+      this._finishEntityPointerDrag();
       this._selectedAreaId = null;
       this._selectedMarkerId = null;
     }
@@ -739,12 +769,6 @@ export class FloorplanPanel extends LitElement {
     this._renderMarkers(this._getCurrentPlan());
   }
 
-  private _onEntityDragStart(entityId: string, event: DragEvent) {
-    event.dataTransfer?.setData("application/x-floorplan-entity", entityId);
-    event.dataTransfer?.setData("text/plain", entityId);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
-  }
-
   private _onCanvasDragOver(event: DragEvent) {
     if (!this._editMode || !this._getCurrentPlan()) return;
     event.preventDefault();
@@ -766,13 +790,151 @@ export class FloorplanPanel extends LitElement {
       event.dataTransfer?.getData("text/plain");
     if (!entityId) return;
 
+    this._addMarkerAtClientPoint(entityId, event.clientX, event.clientY, container);
+  }
+
+  private _onEntityDragStart(entityId: string, event: DragEvent) {
+    if (!event.dataTransfer) return;
+    this._finishEntityPointerDrag();
+    event.dataTransfer.setData("application/x-floorplan-entity", entityId);
+    event.dataTransfer.setData("text/plain", entityId);
+    event.dataTransfer.effectAllowed = "copy";
+  }
+
+  private _onEntityPointerDown(entityId: string, event: PointerEvent) {
+    if (!this._editMode || !this._getCurrentPlan() || !event.isPrimary || event.button !== 0) {
+      return;
+    }
+    this._finishEntityPointerDrag();
+    const target = event.currentTarget as HTMLElement;
+    const palette = target.closest<HTMLElement>(".entity-palette");
+    this._entityPointerDrag = {
+      entityId,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      target,
+      palette,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollTop: palette?.scrollTop ?? 0,
+      ready: event.pointerType !== "touch",
+      scrolling: false,
+      holdTimer: null,
+      active: false,
+    };
+    if (event.pointerType === "touch") {
+      const pointerId = event.pointerId;
+      this._entityPointerDrag.holdTimer = window.setTimeout(() => {
+        const drag = this._entityPointerDrag;
+        if (drag?.pointerId === pointerId && !drag.scrolling) drag.ready = true;
+      }, ENTITY_TOUCH_DRAG_HOLD_MS);
+    }
+    try {
+      target.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic tests and older WebViews may not expose native pointer capture.
+    }
+  }
+
+  private _onEntityPointerMove(event: PointerEvent) {
+    const drag = this._entityPointerDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    const distance = Math.hypot(deltaX, deltaY);
+    if (drag.pointerType === "touch" && !drag.ready) {
+      event.preventDefault();
+      if (distance >= ENTITY_POINTER_DRAG_THRESHOLD_PX) {
+        drag.scrolling = true;
+        if (drag.holdTimer !== null) {
+          window.clearTimeout(drag.holdTimer);
+          drag.holdTimer = null;
+        }
+        if (drag.palette) drag.palette.scrollTop = drag.startScrollTop - deltaY;
+      }
+      return;
+    }
+
+    if (!drag.active && distance >= ENTITY_POINTER_DRAG_THRESHOLD_PX) {
+      drag.active = true;
+    }
+    if (!drag.active) return;
+
+    event.preventDefault();
+    const canvas = this._canvasContainer();
+    canvas?.classList.toggle(
+      "drag-target",
+      this._clientPointIsInside(canvas, event.clientX, event.clientY)
+    );
+  }
+
+  private _onEntityPointerUp(event: PointerEvent) {
+    const drag = this._entityPointerDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const canvas = this._canvasContainer();
+    const shouldAdd =
+      drag.active && this._clientPointIsInside(canvas, event.clientX, event.clientY);
+    this._finishEntityPointerDrag();
+    if (shouldAdd && canvas) {
+      this._addMarkerAtClientPoint(drag.entityId, event.clientX, event.clientY, canvas);
+    }
+  }
+
+  private _onEntityPointerCancel(event: PointerEvent) {
+    if (this._entityPointerDrag?.pointerId !== event.pointerId) return;
+    this._finishEntityPointerDrag();
+  }
+
+  private _canvasContainer(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>(".canvas-container");
+  }
+
+  private _clientPointIsInside(
+    element: HTMLElement | null,
+    clientX: number,
+    clientY: number
+  ): element is HTMLElement {
+    if (!element) return false;
+    const bounds = element.getBoundingClientRect();
+    return (
+      clientX >= bounds.left &&
+      clientX <= bounds.right &&
+      clientY >= bounds.top &&
+      clientY <= bounds.bottom
+    );
+  }
+
+  private _finishEntityPointerDrag() {
+    this._canvasContainer()?.classList.remove("drag-target");
+    const drag = this._entityPointerDrag;
+    if (drag) {
+      if (drag.holdTimer !== null) window.clearTimeout(drag.holdTimer);
+      try {
+        if (drag.target.hasPointerCapture(drag.pointerId)) {
+          drag.target.releasePointerCapture(drag.pointerId);
+        }
+      } catch {
+        // The browser may already have released capture after pointerup/cancel.
+      }
+    }
+    this._entityPointerDrag = null;
+  }
+
+  private _addMarkerAtClientPoint(
+    entityId: string,
+    clientX: number,
+    clientY: number,
+    container: HTMLElement
+  ) {
+    if (!this._stage) return;
     const bounds = container.getBoundingClientRect();
     const transform = this._stage.getAbsoluteTransform().copy().invert();
-    const position = transform.point({
-      x: event.clientX - bounds.left,
-      y: event.clientY - bounds.top,
-    });
-    this._addMarkerAt(entityId, position);
+    this._addMarkerAt(
+      entityId,
+      transform.point({ x: clientX - bounds.left, y: clientY - bounds.top })
+    );
   }
 
   private _updateMarker(markerId: string, updates: Partial<Marker>) {
@@ -1294,6 +1456,7 @@ export class FloorplanPanel extends LitElement {
         },
         addMarker: () => this._addMarker(),
         startEntityDrag: (entityId, event) => this._onEntityDragStart(entityId, event),
+        startEntityPointerDrag: (entityId, event) => this._onEntityPointerDown(entityId, event),
         updateViewFilter: (filterName, event) => this._updateViewFilter(filterName, event),
         updateAreaOverlay: (slot, field, event) => this._updateAreaOverlayValue(slot, field, event),
         updateAreaBadges: (event) => this._updateAreaBadges(event),

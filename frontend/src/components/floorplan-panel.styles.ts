@@ -360,6 +360,7 @@ export const floorplanPanelStyles = css`
     color: var(--primary-text-color, #212121);
     cursor: grab;
     font-size: 12px;
+    touch-action: none;
     user-select: none;
   }
 
