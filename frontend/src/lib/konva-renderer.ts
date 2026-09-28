@@ -62,6 +62,7 @@ interface InteractivityOptions {
 interface MarkerRefreshOptions {
   layer: Konva.Layer;
   plan: Plan;
+  view: View | undefined;
   states: Record<string, HassEntity>;
   entities: HassEntityRegistry[];
   groups: Map<string, Konva.Group>;
@@ -79,7 +80,7 @@ export function renderAreas(options: AreaRenderOptions): void {
     const areaShape = createAreaShape(area, options.editMode);
     if (!areaShape) continue;
 
-    areaShape.on("click", (event) => {
+    areaShape.on("click tap", (event) => {
       event.cancelBubble = true;
       if (options.editMode) options.onSelect(area.id);
     });
@@ -105,11 +106,11 @@ export function renderAreas(options: AreaRenderOptions): void {
 }
 
 function areaMatchesView(area: AreaShape, view: View | undefined): boolean {
-  const areaFilter = view?.filters.area_ids;
+  const areaFilter = view?.filters?.area_ids;
   if (areaFilter?.length && (!area.area_id || !areaFilter.includes(area.area_id))) {
     return false;
   }
-  const tagFilter = view?.filters.tags;
+  const tagFilter = view?.filters?.tags;
   return !tagFilter?.length || tagFilter.some((tag) => area.tags.includes(tag));
 }
 
@@ -285,7 +286,7 @@ export function renderMarkers(options: MarkerRenderOptions): void {
     const registryEntry = registryByEntity.get(marker.entity_id);
     const group = createMarkerGroup(marker, state, registryEntry, options);
 
-    group.on("click", (event) => {
+    group.on("click tap", (event) => {
       event.cancelBubble = true;
       if (options.editMode) {
         options.onSelect(marker.id);
@@ -357,7 +358,7 @@ function createMarkerGroup(
       name: "marker-value",
       x: 26,
       y: 1,
-      text: markerValues(marker, state),
+      text: markerValues(marker, state, options.view, options.states),
       fill: "#424242",
       fontSize: 12,
       padding: 2,
@@ -378,7 +379,7 @@ export function refreshMarkerLiveValues(options: MarkerRefreshOptions): void {
     const value = group.findOne(".marker-value") as Konva.Text | undefined;
     const label = group.findOne(".marker-label") as Konva.Text | undefined;
     dot?.fill(getMarkerColor(state));
-    value?.text(markerValues(marker, state));
+    value?.text(markerValues(marker, state, options.view, options.states));
     label?.text(
       marker.label_mode === "off"
         ? ""
@@ -388,10 +389,25 @@ export function refreshMarkerLiveValues(options: MarkerRefreshOptions): void {
   options.layer.batchDraw();
 }
 
-function markerValues(marker: Marker, state: HassEntity | undefined): string {
-  return [getMarkerValue(marker, state), getMarkerValue(marker, state, "secondary")]
+function markerValues(
+  marker: Marker,
+  state: HassEntity | undefined,
+  view: View | undefined,
+  states: Record<string, HassEntity>
+): string {
+  const overlay = view?.marker_overlay;
+  const values = [
+    overlay?.primary ? resolveValueSpec(overlay.primary, states) : getMarkerValue(marker, state),
+    overlay?.secondary
+      ? resolveValueSpec(overlay.secondary, states)
+      : getMarkerValue(marker, state, "secondary"),
+  ]
     .filter(Boolean)
     .join(" · ");
+  const badges = getActiveBadges(overlay?.badges, states).map(
+    (badge) => `${badge.icon ? `${badge.icon} ` : ""}${badge.label ?? badge.entity_id}`
+  );
+  return [values, ...badges].filter(Boolean).join("\n");
 }
 
 export function drawEmptyState(layer: Konva.Layer, stageWidth: number, stageHeight: number): void {

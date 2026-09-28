@@ -206,7 +206,7 @@ class AssetGarbageCollectionTests(unittest.IsolatedAsyncioTestCase):
         os.utime(path, (timestamp, timestamp))
         return path
 
-    async def test_removes_only_old_unreferenced_assets(self) -> None:
+    async def test_retains_newly_unreferenced_old_images_until_grace_expires(self) -> None:
         referenced = "a" * 64
         orphan = "b" * 64
         fresh = "c" * 64
@@ -216,7 +216,15 @@ class AssetGarbageCollectionTests(unittest.IsolatedAsyncioTestCase):
         invalid_path = self.store.directory / "not-an-asset.png"
         invalid_path.write_bytes(PNG)
 
-        deleted = await self.store.async_collect_garbage({referenced}, grace_seconds=300)
+        started = time.time()
+        self.assertEqual(
+            [], await self.store.async_collect_garbage({referenced}, grace_seconds=300)
+        )
+        self.assertTrue(orphan_path.exists())
+        # Referencing the fresh asset clears its orphan timestamp.
+        await self.store.async_collect_garbage({referenced, fresh}, grace_seconds=300)
+        with patch.object(ASSET_MODULE.time, "time", return_value=started + 301):
+            deleted = await self.store.async_collect_garbage({referenced, fresh}, grace_seconds=300)
 
         self.assertEqual([orphan], deleted)
         self.assertTrue(referenced_path.exists())
@@ -228,11 +236,33 @@ class AssetGarbageCollectionTests(unittest.IsolatedAsyncioTestCase):
         orphan = "d" * 64
         orphan_path = self._asset_file(orphan, age_seconds=10_000)
 
-        candidates = await self.store.async_collect_garbage(set(), grace_seconds=300, dry_run=True)
-        deleted = await self.store.async_collect_garbage(set(), grace_seconds=300)
+        candidates = await self.store.async_collect_garbage(set(), grace_seconds=0, dry_run=True)
+        self.assertFalse(orphan_path.with_name(f".{orphan_path.name}.unreferenced").exists())
+        deleted = await self.store.async_collect_garbage(set(), grace_seconds=0)
         repeated = await self.store.async_collect_garbage(set(), grace_seconds=300)
 
         self.assertEqual([orphan], candidates)
         self.assertEqual([orphan], deleted)
         self.assertEqual([], repeated)
         self.assertFalse(orphan_path.exists())
+
+    async def test_undo_and_reupload_reset_retention_across_restarts(self) -> None:
+        reference = await self.store.async_store(PNG, "image/png")
+        path = self.store.path_for(reference.asset_id, reference.content_type)
+        await self.store.async_collect_garbage(set(), grace_seconds=300)
+        marker = path.with_name(f".{path.name}.unreferenced")
+        self.assertTrue(marker.exists())
+        # A restored plan removes the orphan timestamp.
+        await self.store.async_collect_garbage({reference.asset_id}, grace_seconds=300)
+        self.assertFalse(marker.exists())
+        await self.store.async_collect_garbage(set(), grace_seconds=300)
+        # Retention survives an integration restart.
+        restarted = FloorplanAssetStore(self.store._hass)
+        with patch.object(ASSET_MODULE.time, "time", return_value=time.time() + 301):
+            self.assertEqual(
+                [reference.asset_id],
+                await restarted.async_collect_garbage(set(), grace_seconds=300, dry_run=True),
+            )
+            await restarted.async_store(PNG, "image/png")
+            self.assertEqual([], await restarted.async_collect_garbage(set(), grace_seconds=300))
+        self.assertTrue(path.exists())

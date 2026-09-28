@@ -25,6 +25,7 @@ export class ConfigSaveQueue {
   private _pending: PendingSave | null = null;
   private _failed: FloorplanConfig | null = null;
   private _running = false;
+  private _generation = 0;
 
   public constructor(
     private readonly _save: SaveOperation,
@@ -32,6 +33,7 @@ export class ConfigSaveQueue {
   ) {}
 
   public reset(revision: number): void {
+    this._generation += 1;
     for (const resolve of this._pending?.waiters ?? []) {
       resolve(false);
     }
@@ -71,16 +73,26 @@ export class ConfigSaveQueue {
     this._running = true;
     try {
       while (this._pending) {
+        const generation = this._generation;
         const pending = this._pending;
         this._pending = null;
         this._callbacks.onStatus({ state: "saving", dirty: true });
         try {
-          this._revision = await this._save(pending.config, this._revision);
+          const revision = await this._save(pending.config, this._revision);
+          if (generation !== this._generation) {
+            for (const resolve of pending.waiters) resolve(false);
+            continue;
+          }
+          this._revision = revision;
           this._callbacks.onSaved(this._revision);
           for (const resolve of pending.waiters) {
             resolve(true);
           }
         } catch (error) {
+          if (generation !== this._generation) {
+            for (const resolve of pending.waiters) resolve(false);
+            continue;
+          }
           const queuedAfterFailure = this._pending as PendingSave | null;
           this._failed = queuedAfterFailure?.config ?? pending.config;
           const unresolved = queuedAfterFailure?.waiters ?? [];

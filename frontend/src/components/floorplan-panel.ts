@@ -26,14 +26,15 @@ import {
   errorCode,
   loadFloorplanConfig,
   loadRegistry,
-  MAX_CONFIG_FILE_BYTES,
   saveFloorplanConfig,
   validateFloorplanConfig,
 } from "../lib/config-api";
 import {
   createPortableConfig,
+  fetchFloorplanImage,
   materializeImportedImages,
   MAX_IMAGE_FILE_BYTES,
+  MAX_PORTABLE_CONFIG_BYTES,
   uploadFloorplanImage,
 } from "../lib/asset-api";
 import { ConfigSaveQueue, type SaveState, type SaveStatus } from "../lib/config-save-queue";
@@ -184,11 +185,17 @@ export class FloorplanPanel extends LitElement {
   }
 
   private async _loadConfig() {
+    this._destroyStage();
     this._loading = true;
     try {
       this._config = await loadFloorplanConfig(this.hass);
       this._saveQueue.reset(this._config.revision);
       this._history.reset();
+      this._saveConflict = false;
+      this._error = "";
+      this._notice = "";
+      this._selectedAreaId = null;
+      this._selectedMarkerId = null;
       this._currentPlanId = this._config.plans[0]?.plan_id ?? null;
       if (
         this._config.default_view &&
@@ -196,6 +203,7 @@ export class FloorplanPanel extends LitElement {
       ) {
         this._currentView = this._config.default_view;
       }
+      this._reconcileSelection();
     } catch {
       this._config = {
         version: CURRENT_CONFIG_VERSION,
@@ -221,6 +229,7 @@ export class FloorplanPanel extends LitElement {
       this._history.record(this._config);
     }
     this._config = config;
+    this._reconcileSelection();
     return this._saveQueue.enqueue(config);
   }
 
@@ -265,7 +274,7 @@ export class FloorplanPanel extends LitElement {
   }
 
   protected updated(changedProps: Map<string, unknown>) {
-    if (changedProps.has("_loading") && !this._loading && !this._stage) {
+    if (changedProps.has("_loading") && !this._loading && !this._stage && this.isConnected) {
       this._initializeStage();
     }
 
@@ -285,6 +294,8 @@ export class FloorplanPanel extends LitElement {
         this._editMode = false;
         this._selectedAreaId = null;
         this._selectedMarkerId = null;
+        this._renderAreas(this._getCurrentPlan());
+        this._renderMarkers(this._getCurrentPlan());
         this._syncCanvasInteractivity();
       }
       this._scheduleLiveRefresh();
@@ -408,16 +419,19 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _getCurrentPlan(): Plan | null {
-    if (!this._config || !this._currentPlanId) return null;
-    const plan = this._config.plans.find((p) => p.plan_id === this._currentPlanId) || null;
+    return this._config?.plans.find((plan) => plan.plan_id === this._currentPlanId) ?? null;
+  }
 
-    // If the current plan id no longer exists (e.g. after deletion), reset selection
-    if (!plan && this._config.plans.length > 0) {
-      this._currentPlanId = this._config.plans[0].plan_id;
-      return this._config.plans[0];
+  private _reconcileSelection(): void {
+    if (!this._config) return;
+    if (!this._config.plans.some((plan) => plan.plan_id === this._currentPlanId)) {
+      this._currentPlanId = this._config.plans[0]?.plan_id ?? null;
+      this._selectedAreaId = null;
+      this._selectedMarkerId = null;
     }
-
-    return plan;
+    if (!this._config.views.some((view) => view.id === this._currentView)) {
+      this._currentView = this._config.default_view ?? this._config.views[0]?.id ?? "all";
+    }
   }
 
   private _renderFloorplan() {
@@ -437,13 +451,15 @@ export class FloorplanPanel extends LitElement {
 
     if (!plan) {
       this._drawEmptyState(stageWidth, stageHeight);
-    } else if (plan.background?.url) {
+    } else if (plan.background?.asset_id || plan.background?.url) {
       this._renderAreas(plan);
       this._renderMarkers(plan);
 
       // Load background image
       const imageObj = new Image();
+      let objectUrl: string | undefined;
       imageObj.onload = () => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
         if (generation !== this._renderGeneration || plan.plan_id !== this._currentPlanId) {
           return;
         }
@@ -464,13 +480,21 @@ export class FloorplanPanel extends LitElement {
           this._setError(this._t("panel.imageRenderError"));
         }
       };
-      imageObj.onerror = () => {
+      const onError = () => {
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
         if (generation !== this._renderGeneration) return;
         this._backgroundLayer!.destroyChildren();
         this._drawImageErrorState(stageWidth, stageHeight);
         this._setError(this._t("panel.imageLoadError"));
       };
-      imageObj.src = plan.background.url;
+      imageObj.onerror = onError;
+      void fetchFloorplanImage(this.hass, plan.background)
+        .then((image) => {
+          if (generation !== this._renderGeneration) return;
+          objectUrl = URL.createObjectURL(image);
+          imageObj.src = objectUrl;
+        })
+        .catch(onError);
     } else if (plan) {
       // No background image but areas exist
       this._renderAreas(plan);
@@ -484,7 +508,7 @@ export class FloorplanPanel extends LitElement {
 
   private _fitToScreen(imgWidth: number, imgHeight: number) {
     if (!this._stage) return;
-    fitStageToContent(this._stage, imgWidth, imgHeight);
+    fitStageToContent(this._stage, imgWidth, imgHeight, this._getCurrentPlan()?.view);
   }
 
   private _toggleEditMode() {
@@ -496,6 +520,7 @@ export class FloorplanPanel extends LitElement {
       this._selectedMarkerId = null;
     }
     this._renderAreas(this._getCurrentPlan());
+    this._renderMarkers(this._getCurrentPlan());
     this._syncCanvasInteractivity();
   }
 
@@ -610,7 +635,7 @@ export class FloorplanPanel extends LitElement {
 
     this._selectedAreaId = id;
     this._selectedMarkerId = null;
-    this._renderFloorplan();
+    this._renderAreas(this._getCurrentPlan());
   }
 
   private _updateAreaShape(areaId: string, updates: AreaGeometryUpdate) {
@@ -722,6 +747,7 @@ export class FloorplanPanel extends LitElement {
     refreshMarkerLiveValues({
       layer: this._markersLayer,
       plan,
+      view: this._getCurrentView(),
       states: this.hass.states,
       entities: this._haEntities,
       groups: this._markerGroups,
@@ -1260,8 +1286,8 @@ export class FloorplanPanel extends LitElement {
   private async _exportConfig() {
     if (!this._config) return;
     try {
-      const portable = await createPortableConfig(this._config);
-      const blob = new Blob([JSON.stringify(portable, null, 2)], {
+      const portable = await createPortableConfig(this.hass, this._config);
+      const blob = new Blob([JSON.stringify(portable)], {
         type: "application/json",
       });
       const url = URL.createObjectURL(blob);
@@ -1288,7 +1314,7 @@ export class FloorplanPanel extends LitElement {
     const file = input.files?.[0];
     input.value = "";
     if (!file) return;
-    if (file.size > MAX_CONFIG_FILE_BYTES) {
+    if (file.size > MAX_PORTABLE_CONFIG_BYTES) {
       this._setError(this._t("panel.configTooLarge"));
       return;
     }

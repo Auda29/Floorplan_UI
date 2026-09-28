@@ -82,7 +82,7 @@ export function getActiveBadges(
 export function markerMatchesView(marker: Marker, view: View | undefined): boolean {
   if (!view) return true;
 
-  const { domains, tags, area_ids: areaIds } = view.filters;
+  const { domains, tags, area_ids: areaIds } = view.filters ?? {};
   if (domains?.length && !domains.includes(getEntityDomain(marker.entity_id))) {
     return false;
   }

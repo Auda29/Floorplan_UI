@@ -37,7 +37,7 @@ export function createStageController(
   stage.add(areasLayer);
   stage.add(markersLayer);
 
-  stage.on("click", (event) => {
+  stage.on("click tap", (event) => {
     if (options.isEditing() && event.target === stage) {
       options.onEmptyCanvasClick();
     }
@@ -137,8 +137,20 @@ export function createStageController(
   };
 }
 
-export function fitStageToContent(stage: Konva.Stage, width: number, height: number): void {
-  const scale = Math.min(stage.width() / width, stage.height() / height) * 0.9;
+export function fitStageToContent(
+  stage: Konva.Stage,
+  width: number,
+  height: number,
+  limits: StageZoomLimits = { minZoom: 0.1, maxZoom: 5 }
+): void {
+  if (
+    ![width, height, stage.width(), stage.height()].every(
+      (value) => Number.isFinite(value) && value > 0
+    )
+  )
+    return;
+  const requested = Math.min(stage.width() / width, stage.height() / height) * 0.9;
+  const scale = Math.max(limits.minZoom, Math.min(limits.maxZoom, requested));
   stage.scale({ x: scale, y: scale });
   stage.position({
     x: (stage.width() - width * scale) / 2,

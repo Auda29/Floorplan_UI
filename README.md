@@ -105,7 +105,7 @@ The complete user-facing release history is maintained in
 [`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
 from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
 The current public release is
-[`v0.2.0-beta.1`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.2.0-beta.1).
+[`v0.2.0-beta.3`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.2.0-beta.3).
 
 Versions below `1.0.0` represent initial development and may contain breaking
 changes. Public `0.x` releases are offered through the normal HACS channel;
@@ -146,7 +146,8 @@ CPU-intensive image decoding and hashing run outside Home Assistant's event loop
 
 Images are private content-addressed assets with exact 64-character lowercase
 SHA-256 IDs. Garbage collection only considers managed `.png`/`.jpg` files, keeps
-referenced assets, applies a seven-day grace period, and runs only after successful
+referenced assets, applies a seven-day grace period starting when an asset becomes
+unreferenced, and runs only after successful
 configuration persistence. One deletion failure cannot roll back or abort a save.
 Configuration writes use revision checks to prevent one administrator tab from
 silently overwriting another; the complete persisted configuration is limited to
@@ -154,9 +155,11 @@ silently overwriting another; the complete persisted configuration is limited to
 complete sequence of x/y pairs.
 
 JSON exports remain portable: referenced images are embedded in the downloaded
-backup and uploaded into the private asset store again during import. Import data
-is structurally validated before migration, and supported migrations work on
-copies rather than mutating the submitted object.
+backup and uploaded into the private asset store again during import. Portable
+backup files support up to 128 MB to accommodate 20 images with base64 overhead;
+configuration metadata still has a 20 MB limit. Metadata is validated and migrated
+before images are uploaded, and shared images are transferred only once per operation.
+Supported migrations work on copies rather than mutating the submitted object.
 
 Report security or functional issues through the repository's
 [issue tracker](https://github.com/Auda29/Floorplan_UI/issues).

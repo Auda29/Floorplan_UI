@@ -6,7 +6,6 @@ import type {
 } from "../types/home-assistant";
 
 export const CURRENT_CONFIG_VERSION = 3;
-export const MAX_CONFIG_FILE_BYTES = 20_000_000;
 
 export interface RegistryResult {
   areas: HassArea[];

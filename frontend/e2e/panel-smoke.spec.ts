@@ -109,15 +109,17 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
             throw new Error(`Unexpected WebSocket command: ${String(message.type)}`);
         }
       },
-      fetchWithAuth: async () =>
-        new Response(
-          JSON.stringify({
-            asset_id: "a".repeat(64),
-            content_type: "image/png",
-            url: assetUrl,
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        ),
+      fetchWithAuth: async (_path: string, init?: RequestInit) =>
+        init?.method !== "POST"
+          ? fetch(assetUrl)
+          : new Response(
+              JSON.stringify({
+                asset_id: "a".repeat(64),
+                content_type: "image/png",
+                url: assetUrl,
+              }),
+              { status: 200, headers: { "Content-Type": "application/json" } }
+            ),
     };
     harness.hass = hass;
     Object.assign(window, { __floorplanHarness: harness });

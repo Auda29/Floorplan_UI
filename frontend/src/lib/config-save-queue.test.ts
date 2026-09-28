@@ -27,6 +27,40 @@ function config(name: string): FloorplanConfig {
 }
 
 describe("ConfigSaveQueue", () => {
+  it.each([false, true])(
+    "ignores stale save completion after reset (failure: %s)",
+    async (fails) => {
+      let finish!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const bases: number[] = [];
+      const saved: number[] = [];
+      const statuses: SaveStatus[] = [];
+      const queue = new ConfigSaveQueue(
+        async (_config, revision) => {
+          bases.push(revision);
+          if (bases.length === 1) {
+            await gate;
+            if (fails) throw new Error("stale failure");
+          }
+          return revision + 1;
+        },
+        { onSaved: (revision) => saved.push(revision), onStatus: (status) => statuses.push(status) }
+      );
+      const old = queue.enqueue(config("old"));
+      const discarded = queue.enqueue(config("discarded"));
+      queue.reset(10);
+      const current = queue.enqueue(config("current"));
+      finish();
+      expect(await Promise.all([old, discarded, current])).toEqual([false, false, true]);
+      expect(bases).toEqual([0, 10]);
+      expect(saved).toEqual([11]);
+      expect(statuses.some((status) => status.state === "failed")).toBe(false);
+      expect(statuses.at(-1)).toEqual({ state: "idle", dirty: false });
+    }
+  );
+
   it("never overlaps saves and coalesces the newest pending snapshot", async () => {
     let active = 0;
     let maximumActive = 0;
