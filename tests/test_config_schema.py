@@ -81,6 +81,75 @@ class ConfigSchemaContractTests(unittest.TestCase):
 
         self.validator.validate(normalized)
 
+    def test_malformed_marker_fields_are_rejected_by_backend_and_schema(self) -> None:
+        for field, value in (
+            ("icon", []),
+            ("icon", None),
+            ("area_id", []),
+            ("area_id", 123),
+            ("action", None),
+            ("action", []),
+            ("action", {"tap": "unsupported"}),
+            ("action", {"tap": []}),
+            ("label_mode", []),
+            ("bind", {"primary": {"source": []}}),
+        ):
+            with self.subTest(field=field, value=value):
+                config = valid_config()
+                config["plans"][0]["markers"][0][field] = value
+                self.assertFalse(self.validator.is_valid(config))
+                with self.assertRaises(ValueError):
+                    FloorplanStore.validate_and_normalize(config)
+
+    def test_supported_marker_actions_and_optional_fields_match_schema(self) -> None:
+        for action in (
+            {},
+            {"tap": "none"},
+            {"tap": "toggle"},
+            {"tap": "more-info", "extension": True},
+        ):
+            config = valid_config()
+            marker = config["plans"][0]["markers"][0]
+            marker["action"] = action
+            marker["area_id"] = None
+            marker.pop("icon")
+            self.validator.validate(FloorplanStore.validate_and_normalize(config))
+
+    def test_unknown_nested_fields_and_null_collections_are_rejected(self) -> None:
+        paths = [
+            ("plans", 0, "markers", 0, "pos"),
+            ("plans", 0, "markers", 0, "bind"),
+            ("plans", 0, "markers", 0, "bind", "primary"),
+            ("views", 0, "filters"),
+            ("views", 0, "marker_overlay"),
+            ("views", 0, "marker_overlay", "primary"),
+            ("views", 0, "marker_overlay", "badges", 0),
+            ("views", 0, "marker_overlay", "badges", 0, "when"),
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                config = valid_config()
+                config["views"][0]["marker_overlay"] = {
+                    "primary": {"mode": "entity", "entity_id": "sensor.temp", "source": "state"},
+                    "badges": [{"entity_id": "light.a", "when": {"state_is": "on"}}],
+                }
+                node = config
+                for key in path:
+                    node = node[key]
+                node["unexpected"] = True
+                self.assertFalse(self.validator.is_valid(config))
+                with self.assertRaises(ValueError):
+                    FloorplanStore.validate_and_normalize(config)
+        for values in (
+            {"filters": {"tags": None}},
+            {"marker_overlay": None},
+            {"marker_overlay": {"badges": None}},
+        ):
+            config = valid_config()
+            config["views"][0].update(values)
+            with self.assertRaises(ValueError):
+                FloorplanStore.validate_and_normalize(config)
+
     def test_schema_version_matches_python_and_typescript_constants(self) -> None:
         python_constants = (ROOT / "custom_components" / "floorplan_ui" / "const.py").read_text(
             encoding="utf-8"

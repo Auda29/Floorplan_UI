@@ -10,7 +10,7 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .asset_store import FloorplanAssetStore, collect_referenced_asset_ids
+from .asset_store import AssetValidationError, FloorplanAssetStore, collect_referenced_asset_ids
 from .config_model import ConfigModel, default_config
 from .const import STORAGE_KEY, STORAGE_VERSION
 
@@ -62,8 +62,21 @@ class FloorplanStore(ConfigModel):
                     self._data = default_config()
                 else:
                     migrated = self._migrate_config(data)
+                    # Validate plan metadata first. Broken legacy image payloads
+                    # are recovered individually, rather than dropping every plan.
+                    metadata = copy.deepcopy(migrated)
+                    plans = metadata.get("plans", [])
+                    for plan in plans if isinstance(plans, list) else []:
+                        background = plan.get("background") if isinstance(plan, dict) else None
+                        if not isinstance(background, dict):
+                            continue
+                        url = background.get("url")
+                        if isinstance(url, str) and url.startswith("data:"):
+                            background.pop("url")
+                            if not background.get("asset_id"):
+                                background.pop("content_type", None)
                     valid, error = self._validate_config_structure(
-                        migrated,
+                        metadata,
                         allow_embedded_images=True,
                     )
                     if not valid:
@@ -73,7 +86,25 @@ class FloorplanStore(ConfigModel):
                         )
                         self._data = default_config()
                     else:
-                        materialized = await self._async_materialize_embedded_images(migrated)
+                        invalid_images: list[str] = []
+                        materialized = await self._async_materialize_embedded_images(
+                            migrated, invalid_images=invalid_images
+                        )
+                        if invalid_images:
+                            recovery_store: Store = Store(
+                                self._hass,
+                                STORAGE_VERSION,
+                                f"{STORAGE_KEY}.recovery",
+                                atomic_writes=True,
+                            )
+                            # Preserve the original before writing the recovered configuration.
+                            await recovery_store.async_save(data)
+                            _LOGGER.warning(
+                                "Recovered plans with invalid backgrounds (%s); original config "
+                                "saved to %s.recovery",
+                                ", ".join(invalid_images),
+                                STORAGE_KEY,
+                            )
                         self._data = self._normalize_config(materialized)
                         if self._data != data:
                             await self._store.async_save(self._data)
@@ -134,6 +165,8 @@ class FloorplanStore(ConfigModel):
     async def _async_materialize_embedded_images(
         self,
         config: dict[str, Any],
+        *,
+        invalid_images: list[str] | None = None,
     ) -> dict[str, Any]:
         """Move legacy data URLs into content-addressed files."""
         materialized = copy.deepcopy(config)
@@ -146,7 +179,16 @@ class FloorplanStore(ConfigModel):
             url = background.get("url")
             if not isinstance(url, str) or not url.startswith("data:"):
                 continue
-            reference = await self._asset_store.async_store_data_url(url)
+            try:
+                reference = await self._asset_store.async_store_data_url(url)
+            except AssetValidationError:
+                if invalid_images is None:
+                    raise
+                invalid_images.append(plan["plan_id"])
+                background.pop("url", None)
+                if not background.get("asset_id"):
+                    background.pop("content_type", None)
+                continue
             background.pop("url", None)
             background.update(reference.as_dict())
         return materialized

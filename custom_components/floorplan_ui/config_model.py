@@ -136,7 +136,7 @@ class ConfigModel:
             if asset_id is not None:
                 if not is_asset_id(asset_id):
                     return False, f"Plan {plan_index} has an invalid image asset ID"
-                if content_type not in {"image/png", "image/jpeg"}:
+                if content_type not in ("image/png", "image/jpeg"):
                     return False, f"Plan {plan_index} has an invalid image content type"
                 if url is not None and not isinstance(url, str):
                     return False, f"Plan {plan_index}.background.url must be a string"
@@ -183,10 +183,10 @@ class ConfigModel:
                 ):
                     return False, f"Plan {plan_index} area {area_index} is invalid"
                 shape = area.get("shape")
-                if not isinstance(shape, dict) or shape.get("type") not in {
+                if not isinstance(shape, dict) or shape.get("type") not in (
                     "rect",
                     "polygon",
-                }:
+                ):
                     return False, f"Plan {plan_index} area {area_index} shape is invalid"
                 if shape["type"] == "polygon":
                     points = shape.get("points")
@@ -256,19 +256,33 @@ class ConfigModel:
                     or not marker["entity_id"]
                 ):
                     return False, f"Plan {plan_index} marker {marker_index} needs IDs"
+                if "icon" in marker and not isinstance(marker["icon"], str):
+                    return False, f"Plan {plan_index} marker {marker_index} icon is invalid"
+                if marker.get("area_id") is not None and not isinstance(marker["area_id"], str):
+                    return False, f"Plan {plan_index} marker {marker_index} area_id is invalid"
+                if "action" in marker:
+                    action = marker["action"]
+                    if not isinstance(action, dict) or (
+                        "tap" in action and action["tap"] not in ("more-info", "toggle", "none")
+                    ):
+                        return False, f"Plan {plan_index} marker {marker_index} action is invalid"
                 pos = marker.get("pos")
-                if not isinstance(pos, dict) or not all(
-                    ConfigModel._is_finite_number(pos.get(axis)) for axis in ("x", "y")
+                if (
+                    not isinstance(pos, dict)
+                    or pos.keys() - {"x", "y"}
+                    or not all(ConfigModel._is_finite_number(pos.get(axis)) for axis in ("x", "y"))
                 ):
                     return False, f"Plan {plan_index} marker {marker_index} position is invalid"
-                if marker.get("label_mode") not in {"off", "short", "full", "auto"}:
+                if marker.get("label_mode") not in ("off", "short", "full", "auto"):
                     return False, f"Plan {plan_index} marker {marker_index} label mode is invalid"
                 tags = marker.get("tags")
                 if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
                     return False, f"Plan {plan_index} marker {marker_index} tags are invalid"
                 binding = marker.get("bind")
-                if not isinstance(binding, dict) or not ConfigModel._valid_binding(
-                    binding.get("primary")
+                if (
+                    not isinstance(binding, dict)
+                    or binding.keys() - {"primary", "secondary"}
+                    or not ConfigModel._valid_binding(binding.get("primary"))
                 ):
                     return False, f"Plan {plan_index} marker {marker_index} binding is invalid"
                 if "secondary" in binding and not ConfigModel._valid_binding(
@@ -303,11 +317,11 @@ class ConfigModel:
             ):
                 return False, f"View {view_index} needs an id and name"
             filters = view.get("filters", {})
-            if not isinstance(filters, dict):
+            if not isinstance(filters, dict) or filters.keys() - {"domains", "tags", "area_ids"}:
                 return False, f"View {view_index}.filters must be an object"
             for filter_name in ("domains", "tags", "area_ids"):
                 values = filters.get(filter_name)
-                if values is not None and (
+                if filter_name in filters and (
                     not isinstance(values, list)
                     or not all(isinstance(value, str) for value in values)
                 ):
@@ -315,9 +329,13 @@ class ConfigModel:
 
             for overlay_name in ("area_overlay", "marker_overlay"):
                 overlay = view.get(overlay_name)
-                if overlay is None:
+                if overlay_name not in view:
                     continue
-                if not isinstance(overlay, dict):
+                if not isinstance(overlay, dict) or overlay.keys() - {
+                    "primary",
+                    "secondary",
+                    "badges",
+                }:
                     return False, f"View {view_index}.{overlay_name} must be an object"
                 for value_name in ("primary", "secondary"):
                     if value_name in overlay and not ConfigModel._valid_value_spec(
@@ -325,7 +343,7 @@ class ConfigModel:
                     ):
                         return False, f"View {view_index}.{overlay_name}.{value_name} is invalid"
                 badges = overlay.get("badges")
-                if badges is not None and (
+                if "badges" in overlay and (
                     not isinstance(badges, list)
                     or len(badges) > 20
                     or not all(ConfigModel._valid_badge(badge) for badge in badges)
@@ -335,11 +353,17 @@ class ConfigModel:
         return True, None
 
     @staticmethod
-    def _valid_binding(binding: Any) -> bool:
+    def _valid_binding(binding: Any, *, value_spec: bool = False) -> bool:
         """Validate a marker value binding."""
         return (
             isinstance(binding, dict)
-            and binding.get("source") in {"state", "attr"}
+            and binding.keys()
+            <= (
+                {"source", "attr", "format", "mode", "entity_id"}
+                if value_spec
+                else {"source", "attr", "format"}
+            )
+            and binding.get("source") in ("state", "attr")
             and ("attr" not in binding or isinstance(binding.get("attr"), str))
             and ("format" not in binding or isinstance(binding.get("format"), str))
             and (binding.get("source") != "attr" or bool(binding.get("attr")))
@@ -353,7 +377,7 @@ class ConfigModel:
             and spec.get("mode") == "entity"
             and isinstance(spec.get("entity_id"), str)
             and bool(spec.get("entity_id"))
-            and ConfigModel._valid_binding(spec)
+            and ConfigModel._valid_binding(spec, value_spec=True)
         )
 
     @staticmethod
@@ -361,9 +385,11 @@ class ConfigModel:
         """Validate a state badge specification."""
         return (
             isinstance(badge, dict)
+            and badge.keys() <= {"entity_id", "when", "icon", "label"}
             and isinstance(badge.get("entity_id"), str)
             and bool(badge.get("entity_id"))
             and isinstance(badge.get("when"), dict)
+            and badge["when"].keys() <= {"state_is"}
             and isinstance(badge["when"].get("state_is"), str)
             and bool(badge["when"].get("state_is"))
             and ("icon" not in badge or isinstance(badge.get("icon"), str))

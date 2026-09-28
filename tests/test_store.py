@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import copy
 import importlib
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 
 def _load_store_module():
@@ -312,6 +316,93 @@ class FloorplanStoreTests(unittest.TestCase):
 
         self.assertFalse(valid)
         self.assertIn("size", error or "")
+
+
+class FloorplanLoadTests(unittest.IsolatedAsyncioTestCase):
+    """Recover broken legacy backgrounds without discarding plan data."""
+
+    async def test_recovers_bad_images_preserves_original_and_survives_reload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            hass = types.SimpleNamespace(
+                config=types.SimpleNamespace(path=lambda _path: directory),
+                async_add_executor_job=lambda function, *args: asyncio.to_thread(function, *args),
+            )
+            store = FloorplanStore.__new__(FloorplanStore)
+            store._hass = hass
+            store._data = None
+            store._load_lock = asyncio.Lock()
+            store._asset_store = STORE_MODULE.FloorplanAssetStore(hass)
+            original = valid_config()
+            original["version"] = 2
+            for index, payload in enumerate(
+                (
+                    "data:image/png;base64," + base64.b64encode(b"not-an-image").decode(),
+                    "data:image/png;base64,broken!",
+                )
+            ):
+                plan = copy.deepcopy(original["plans"][0])
+                plan["plan_id"] = f"damaged-{index}"
+                plan["background"] = {"type": "image", "width": 800, "height": 600, "url": payload}
+                original["plans"].append(plan)
+            stored = copy.deepcopy(original)
+            store._store = types.SimpleNamespace(
+                async_load=AsyncMock(return_value=stored), async_save=AsyncMock()
+            )
+            backup = types.SimpleNamespace(async_save=AsyncMock())
+            with patch.object(STORE_MODULE, "Store", return_value=backup):
+                recovered = await store.async_load()
+            backup.async_save.assert_awaited_once_with(original)
+            self.assertEqual(original, stored)
+            self.assertEqual(3, len(recovered["plans"]))
+            self.assertEqual("a" * 64, recovered["plans"][0]["background"]["asset_id"])
+            for plan in recovered["plans"][1:]:
+                self.assertNotIn("url", plan["background"])
+                self.assertEqual(original["plans"][0]["markers"], plan["markers"])
+            store._store.async_save.assert_awaited_once_with(recovered)
+            store._data = None
+            store._store.async_load.return_value = copy.deepcopy(recovered)
+            self.assertEqual(recovered, await store.async_load())
+
+    async def test_image_io_errors_do_not_trigger_destructive_recovery(self) -> None:
+        store = FloorplanStore.__new__(FloorplanStore)
+        store._asset_store = types.SimpleNamespace(
+            async_store_data_url=AsyncMock(side_effect=OSError("disk unavailable"))
+        )
+        config = valid_config()
+        config["plans"][0]["background"]["url"] = "data:image/png;base64,YQ=="
+        invalid_images: list[str] = []
+        with self.assertRaisesRegex(OSError, "disk unavailable"):
+            await store._async_materialize_embedded_images(config, invalid_images=invalid_images)
+        self.assertEqual([], invalid_images)
+        self.assertIn("url", config["plans"][0]["background"])
+
+    async def test_failed_recovery_backup_does_not_overwrite_original_storage(self) -> None:
+        config = valid_config()
+        config["plans"][0]["background"] = {
+            "type": "image",
+            "width": 800,
+            "height": 600,
+            "url": "data:image/png;base64,YQ==",
+        }
+        store = FloorplanStore.__new__(FloorplanStore)
+        store._hass = object()
+        store._data = None
+        store._load_lock = asyncio.Lock()
+        store._store = types.SimpleNamespace(
+            async_load=AsyncMock(return_value=config), async_save=AsyncMock()
+        )
+        store._asset_store = types.SimpleNamespace(
+            async_store_data_url=AsyncMock(
+                side_effect=STORE_MODULE.AssetValidationError("invalid image")
+            )
+        )
+        backup = types.SimpleNamespace(async_save=AsyncMock(side_effect=OSError("backup failed")))
+        with patch.object(STORE_MODULE, "Store", return_value=backup):
+            with self.assertRaisesRegex(OSError, "backup failed"):
+                await store.async_load()
+        store._store.async_save.assert_not_awaited()
+        self.assertIsNone(store._data)
+        self.assertIn("url", config["plans"][0]["background"])
 
 
 class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):

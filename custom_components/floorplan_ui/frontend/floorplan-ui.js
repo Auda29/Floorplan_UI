@@ -8219,6 +8219,7 @@ const Vn = {
   "panel.imageTypeError": "Only PNG and JPEG floorplans are supported.",
   "panel.imageTooLarge": "The floorplan image must not exceed 4 MB.",
   "panel.imageUploadFailed": "The selected image could not be uploaded.",
+  "panel.actionFailed": "The entity could not be toggled.",
   "editor.title": "Edit floorplan",
   "editor.quickActions": "Quick actions",
   "editor.entities": "Entities",
@@ -8335,6 +8336,7 @@ const Vn = {
   "panel.imageTypeError": "Es werden nur PNG- und JPEG-Grundrisse unterstützt.",
   "panel.imageTooLarge": "Das Grundrissbild darf höchstens 4 MB groß sein.",
   "panel.imageUploadFailed": "Das ausgewählte Bild konnte nicht hochgeladen werden.",
+  "panel.actionFailed": "Die Entität konnte nicht umgeschaltet werden.",
   "editor.title": "Grundriss bearbeiten",
   "editor.quickActions": "Schnellaktionen",
   "editor.entities": "Entitäten",
@@ -8487,10 +8489,22 @@ async function Ba(a, t) {
     method: "POST",
     headers: { "Content-Type": t.type },
     body: t
-  }), i = await e.json();
-  if (!e.ok || !("asset_id" in i))
-    throw new Error("error" in i && i.error ? i.error : "Image upload failed.");
-  return i;
+  });
+  let i;
+  try {
+    i = await e.json();
+  } catch {
+    throw new Error("Image upload failed. The server returned an invalid response.");
+  }
+  if (!i || typeof i != "object" || Array.isArray(i))
+    throw new Error("Image upload failed. The server returned an invalid response.");
+  if (!e.ok)
+    throw new Error(
+      "error" in i && typeof i.error == "string" && i.error ? i.error : "Image upload failed."
+    );
+  if (!("asset_id" in i) || typeof i.asset_id != "string" || !/^[0-9a-f]{64}$/.test(i.asset_id) || !("content_type" in i) || i.content_type !== "image/png" && i.content_type !== "image/jpeg" || !("url" in i) || typeof i.url != "string" || !i.url)
+    throw new Error("Image upload failed. The server returned an invalid response.");
+  return { asset_id: i.asset_id, content_type: i.content_type, url: i.url };
 }
 async function Va(a, t) {
   const e = t.asset_id ? await a.fetchWithAuth(`${Ia}/${encodeURIComponent(t.asset_id)}`) : await fetch(t.url ?? "");
@@ -9017,7 +9031,7 @@ function nc(a) {
     if (!_d(n, a.view)) continue;
     const s = a.states[n.entity_id], o = r.get(n.entity_id), l = ac(n, s, o, a);
     l.on("click tap", (h) => {
-      h.cancelBubble = !0, a.editMode ? a.onSelect(n.id) : a.onOpenMoreInfo(n.entity_id);
+      h.cancelBubble = !0, a.editMode ? a.onSelect(n.id) : a.onActivate(n);
     }), l.on("dragend", () => {
       a.editMode && a.onMove(n.id, l.position());
     }), l.on("mouseenter", () => {
@@ -10143,11 +10157,15 @@ const Xr = class Xr extends pe {
     t.has("dialog") && (this._value = ((e = this.dialog) == null ? void 0 : e.value) ?? "");
   }
   updated(t) {
-    var e, i;
-    t.has("dialog") && ((e = this.dialog) == null ? void 0 : e.kind) === "text" && ((i = this.renderRoot.querySelector("input")) == null || i.focus());
+    var e;
+    if (t.has("dialog") && this.dialog) {
+      const i = this.renderRoot.querySelector("dialog");
+      i && !i.open && i.showModal(), (e = this.renderRoot.querySelector(this.dialog.kind === "text" ? "input" : "button")) == null || e.focus();
+    }
   }
   _resolve(t) {
-    this.dispatchEvent(
+    var e;
+    (e = this.renderRoot.querySelector("dialog")) == null || e.close(), this.dispatchEvent(
       new CustomEvent("floorplan-dialog-resolve", {
         detail: t,
         bubbles: !0,
@@ -10156,66 +10174,69 @@ const Xr = class Xr extends pe {
     );
   }
   _confirm() {
-    this.dialog && this._resolve(this.dialog.kind === "text" ? this._value : !0);
+    this.dialog && (this.dialog.kind === "text" && !this._value.trim() || this._resolve(this.dialog.kind === "text" ? this._value : !0));
   }
   _onKeydown(t) {
-    t.key === "Escape" ? (t.preventDefault(), this._resolve(null)) : t.key === "Enter" && (t.preventDefault(), this._confirm());
+    var e;
+    if (t.key === "Tab") {
+      const i = Array.from(
+        this.renderRoot.querySelectorAll("input, button:not([disabled])")
+      ), r = i[0], n = i.at(-1), s = (e = this.shadowRoot) == null ? void 0 : e.activeElement;
+      t.shiftKey && s === r ? (t.preventDefault(), n == null || n.focus()) : !t.shiftKey && s === n && (t.preventDefault(), r == null || r.focus());
+      return;
+    }
+    t.key === "Enter" && t.target instanceof HTMLInputElement && !t.isComposing && (t.preventDefault(), this._confirm());
   }
   render() {
     const t = this.dialog;
     return t ? Y`
-      <div
-        class="backdrop"
-        @click=${(e) => {
-      e.target === e.currentTarget && this._resolve(null);
+      <dialog
+        aria-label=${t.title}
+        @cancel=${(e) => {
+      e.preventDefault(), this._resolve(null);
     }}
+        @click=${(e) => {
+      if (e.target !== e.currentTarget) return;
+      const i = e.currentTarget.getBoundingClientRect();
+      (e.clientX < i.left || e.clientX > i.right || e.clientY < i.top || e.clientY > i.bottom) && this._resolve(null);
+    }}
+        @keydown=${this._onKeydown}
       >
-        <section
-          role="dialog"
-          aria-modal="true"
-          aria-label=${t.title}
-          @keydown=${this._onKeydown}
-        >
-          <h2>${t.title}</h2>
-          ${t.message ? Y`<p>${t.message}</p>` : dt}
-          ${t.kind === "text" ? Y`
-                <input
-                  .value=${this._value}
-                  @input=${(e) => {
+        <h2>${t.title}</h2>
+        ${t.message ? Y`<p>${t.message}</p>` : dt}
+        ${t.kind === "text" ? Y`
+              <input
+                .value=${this._value}
+                @input=${(e) => {
       this._value = e.target.value;
     }}
-                />
-              ` : dt}
-          <div class="actions">
-            <button type="button" @click=${() => this._resolve(null)}>${this.cancelLabel}</button>
-            <button
-              type="button"
-              class=${t.destructive ? "destructive" : ""}
-              ?disabled=${t.kind === "text" && !this._value.trim()}
-              @click=${this._confirm}
-            >
-              ${t.confirmLabel}
-            </button>
-          </div>
-        </section>
-      </div>
+              />
+            ` : dt}
+        <div class="actions">
+          <button type="button" @click=${() => this._resolve(null)}>${this.cancelLabel}</button>
+          <button
+            type="button"
+            class=${t.destructive ? "destructive" : ""}
+            ?disabled=${t.kind === "text" && !this._value.trim()}
+            @click=${this._confirm}
+          >
+            ${t.confirmLabel}
+          </button>
+        </div>
+      </dialog>
     ` : dt;
   }
 };
 Xr.styles = jn`
-    .backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      display: grid;
-      place-items: center;
-      padding: 20px;
+    dialog::backdrop {
       background: rgba(0, 0, 0, 0.5);
     }
 
-    section {
-      width: min(440px, 100%);
+    dialog {
+      box-sizing: border-box;
+      width: min(440px, calc(100% - 40px));
       padding: 20px;
+      border: none;
       border-radius: 8px;
       background: var(--card-background-color, #fff);
       color: var(--primary-text-color, #212121);
@@ -10589,12 +10610,12 @@ const pc = 500, Hn = 6, _c = 250, Kr = class Kr extends pe {
   }
   async _deleteSelectedArea() {
     if (!this._canEdit || !this._config || !this._selectedAreaId) return;
-    const t = this._getCurrentPlan();
-    t && await this._askConfirm(
+    const t = this._selectedAreaId, e = this._getCurrentPlan();
+    e && await this._askConfirm(
       this._t("dialog.deleteAreaMessage"),
       this._t("editor.deleteArea"),
       !0
-    ) && (this._commitConfig(qd(this._config, t.plan_id, this._selectedAreaId)), this._selectedAreaId = null, this._renderFloorplan());
+    ) && (this._commitConfig(qd(this._config, e.plan_id, t)), this._selectedAreaId = null, this._renderFloorplan());
   }
   _renderMarkers(t) {
     this._markersLayer && nc({
@@ -10610,7 +10631,7 @@ const pc = 500, Hn = 6, _c = 250, Kr = class Kr extends pe {
       onSelect: (e) => {
         this._selectedMarkerId = e, this._selectedAreaId = null, this._syncCanvasInteractivity();
       },
-      onOpenMoreInfo: (e) => this._openMoreInfo(e),
+      onActivate: (e) => void this._activateMarker(e),
       onMove: (e, i) => this._updateMarker(e, { pos: i })
     });
   }
@@ -10805,12 +10826,27 @@ const pc = 500, Hn = 6, _c = 250, Kr = class Kr extends pe {
   }
   async _deleteSelectedMarker() {
     if (!this._canEdit || !this._config || !this._selectedMarkerId) return;
-    const t = this._getCurrentPlan();
-    !t || !await this._askConfirm(
+    const t = this._selectedMarkerId, e = this._getCurrentPlan();
+    !e || !await this._askConfirm(
       this._t("dialog.deleteMarkerMessage"),
       this._t("editor.deleteMarker"),
       !0
-    ) || (this._commitConfig(Vd(this._config, t.plan_id, this._selectedMarkerId)), this._selectedMarkerId = null, this._renderMarkers(this._getCurrentPlan()));
+    ) || (this._commitConfig(Vd(this._config, e.plan_id, t)), this._selectedMarkerId = null, this._renderMarkers(this._getCurrentPlan()));
+  }
+  async _activateMarker(t) {
+    var i;
+    const e = ((i = t.action) == null ? void 0 : i.tap) ?? "more-info";
+    if (e !== "none") {
+      if (e === "toggle") {
+        try {
+          await this.hass.callService("homeassistant", "toggle", { entity_id: t.entity_id });
+        } catch {
+          this._setError(this._t("panel.actionFailed"));
+        }
+        return;
+      }
+      this._openMoreInfo(t.entity_id);
+    }
   }
   _openMoreInfo(t) {
     this.dispatchEvent(
@@ -10873,14 +10909,17 @@ const pc = 500, Hn = 6, _c = 250, Kr = class Kr extends pe {
     ));
   }
   async _deleteCurrentView() {
-    if (!this._canEdit || !this._config || this._currentView === "all" || this._config.views.length <= 1 || !await this._askConfirm(
+    if (!this._canEdit || !this._config || this._currentView === "all" || this._config.views.length <= 1)
+      return;
+    const t = this._currentView;
+    if (!await this._askConfirm(
       this._t("dialog.deleteViewMessage"),
       this._t("editor.deleteView"),
       !0
     ))
       return;
-    const t = Id(this._config, this._currentView);
-    t && (this._commitConfig(t.config), this._currentView = t.nextViewId);
+    const e = Id(this._config, t);
+    e && (this._commitConfig(e.config), this._currentView = e.nextViewId);
   }
   _updateViewFilter(t, e) {
     if (!this._canEdit || !this._config) return;
@@ -11021,9 +11060,8 @@ const pc = 500, Hn = 6, _c = 250, Kr = class Kr extends pe {
     }
     let r = null;
     try {
-      r = await createImageBitmap(i);
       const s = await Ba(this.hass, i);
-      this._createNewPlan(i.name, {
+      r = await createImageBitmap(i), this._createNewPlan(i.name, {
         type: "image",
         asset_id: s.asset_id,
         content_type: s.content_type,
@@ -11251,7 +11289,7 @@ const pc = 500, Hn = 6, _c = 250, Kr = class Kr extends pe {
                       <button
                         type="button"
                         aria-pressed=${this._editMode && this._selectedMarkerId === f.id ? "true" : "false"}
-                        @click=${() => this._editMode ? this._selectCanvasObject("marker", f.id) : this._openMoreInfo(f.entity_id)}
+                        @click=${() => this._editMode ? this._selectCanvasObject("marker", f.id) : this._activateMarker(f)}
                       >
                         ${l("panel.markerObject", { entity: f.entity_id })}
                       </button>

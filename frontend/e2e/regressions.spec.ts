@@ -18,6 +18,7 @@ interface Harness {
   config: FloorplanConfig;
   conflict: boolean;
   moreInfo: number;
+  services: Array<{ domain: string; service: string; data?: Record<string, unknown> }>;
 }
 
 declare global {
@@ -28,7 +29,7 @@ declare global {
 
 test.use({ hasTouch: true, viewport: { width: 1400, height: 900 } });
 
-async function mount(page: Page): Promise<void> {
+async function mount(page: Page, action?: "none" | "toggle"): Promise<void> {
   await page.route("http://localhost/", (route) =>
     route.fulfill({
       contentType: "text/html",
@@ -47,10 +48,11 @@ async function mount(page: Page): Promise<void> {
     type: "module",
   });
   await page.waitForFunction(() => !!customElements.get("floorplan-ui-panel"));
-  await page.evaluate(() => {
+  await page.evaluate((action) => {
     const harness: Harness = {
       conflict: false,
       moreInfo: 0,
+      services: [],
       config: {
         version: 3,
         revision: 1,
@@ -78,6 +80,7 @@ async function mount(page: Page): Promise<void> {
                 label_mode: "auto",
                 tags: [],
                 bind: { primary: { source: "state" } },
+                action: action ? { tap: action } : undefined,
               },
             ],
             view: { minZoom: 0.1, maxZoom: 5 },
@@ -91,6 +94,9 @@ async function mount(page: Page): Promise<void> {
       states: {},
       user: { id: "admin", name: "Admin", is_admin: true },
       language: "en",
+      callService: async (domain: string, service: string, data?: Record<string, unknown>) => {
+        harness.services.push({ domain, service, data });
+      },
       callWS: async (message: Record<string, unknown>) => {
         switch (message.type) {
           case "floorplan_ui/get_config":
@@ -122,7 +128,7 @@ async function mount(page: Page): Promise<void> {
       harness.moreInfo += 1;
     });
     document.body.append(panel);
-  });
+  }, action);
   await expect(page.locator("floorplan-ui-panel canvas")).toHaveCount(3);
   await expect
     .poll(() =>
@@ -243,3 +249,69 @@ test("conflict reload reconnects the canvas and undo restores the final plan", a
     .toBe(1);
   expect(errors).toEqual([]);
 });
+
+test("delete confirmation traps focus and Enter on Cancel preserves the marker", async ({
+  page,
+}) => {
+  await mount(page);
+  const panel = page.locator("floorplan-ui-panel");
+  await panel.getByRole("button", { name: "Edit", exact: true }).click();
+  const position = await markerPosition(page);
+  await page.mouse.click(position.x, position.y);
+  const deleteButton = panel.getByRole("button", { name: "Delete marker", exact: true });
+  await deleteButton.click();
+  const dialog = panel.getByRole("dialog");
+  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  const confirm = dialog.getByRole("button", { name: "Delete marker", exact: true });
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(cancel).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(deleteButton).toBeFocused();
+  expect(await page.evaluate(() => window.regressionHarness.config.plans[0].markers.length)).toBe(
+    1
+  );
+  await deleteButton.click();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => window.regressionHarness.config.plans[0].markers.length)).toBe(
+    1
+  );
+});
+
+for (const action of ["none", "toggle"] as const) {
+  test(`marker ${action} action works with mouse, touch and keyboard`, async ({ page }) => {
+    await mount(page, action);
+    const panel = page.locator("floorplan-ui-panel");
+    const position = await markerPosition(page);
+    await page.mouse.click(position.x, position.y);
+    await page.touchscreen.tap(position.x, position.y);
+    await panel.getByRole("button", { name: "Marker for light.kitchen", exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect
+      .poll(() => page.evaluate(() => window.regressionHarness.services.length))
+      .toBe(action === "toggle" ? 3 : 0);
+    expect(await page.evaluate(() => window.regressionHarness.moreInfo)).toBe(0);
+    if (action === "toggle") {
+      expect(await page.evaluate(() => window.regressionHarness.services)).toEqual(
+        Array(3).fill({
+          domain: "homeassistant",
+          service: "toggle",
+          data: { entity_id: "light.kitchen" },
+        })
+      );
+    }
+    await panel.getByRole("button", { name: "Edit", exact: true }).click();
+    const editPosition = await markerPosition(page);
+    await page.touchscreen.tap(editPosition.x, editPosition.y);
+    await expect
+      .poll(() => panel.evaluate((element) => (element as Panel)._selectedMarkerId))
+      .toBe("lamp");
+    expect(await page.evaluate(() => window.regressionHarness.services.length)).toBe(
+      action === "toggle" ? 3 : 0
+    );
+  });
+}
