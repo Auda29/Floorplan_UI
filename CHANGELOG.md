@@ -6,6 +6,8 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0-beta.4] - 2026-09-28
+
 ### Fixed
 
 - Make confirmation dialogs truly modal, preserve their deletion targets, and
@@ -16,7 +18,6 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   and keyboard activation, and validate marker fields against the schema contract.
 - Validate uploads on the server before browser decoding and handle malformed
   upload responses with understandable errors.
-
 - Preserve fractional background dimensions across saves and restarts, normalize
   missing view filters, and reject malformed IDs with configuration errors.
 - Ignore stale in-flight save results after reloading configuration.
@@ -31,6 +32,15 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Preserve pan and zoom when adding areas, honor zoom limits on initial fit, and
   render per-view marker values and conditional badges during live updates.
 - Align the HACS minimum Home Assistant version and README release link.
+
+### Compatibility and upgrades
+
+- Requires Home Assistant 2025.7.3 or newer. This is a HACS beta/prerelease.
+- Keeps configuration schema version 3 and existing asset references compatible.
+- Restart Home Assistant after updating and reload the Floorplan panel. The new
+  integration version refreshes the frontend bundle URL.
+- If legacy image recovery is needed, the original configuration is preserved at
+  `.storage/floorplan_ui.config.recovery`; affected plans are identified in the log.
 
 ## [0.2.0-beta.3] - 2026-08-04
 
@@ -167,7 +177,10 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.3...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.4...HEAD
+[0.2.0-beta.4]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.3...v0.2.0-beta.4
+[0.2.0-beta.3]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.2...v0.2.0-beta.3
+[0.2.0-beta.2]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.1...v0.2.0-beta.2
 [0.2.0-beta.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.2...v0.2.0-beta.1
 [0.1.2]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.0...v0.1.1
