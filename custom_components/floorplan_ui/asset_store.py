@@ -204,6 +204,8 @@ class FloorplanAssetStore:
         async with self._write_lock:
             if not await self._hass.async_add_executor_job(path.is_file):
                 await self._hass.async_add_executor_job(self._atomic_write, path, data)
+            # Re-uploading an existing orphan starts a new retention period.
+            await self._hass.async_add_executor_job(self._clear_unreferenced, path)
         return reference
 
     async def async_store_data_url(self, data_url: str) -> AssetReference:
@@ -235,12 +237,18 @@ class FloorplanAssetStore:
     ) -> list[str]:
         """Remove old, unreferenced assets without following unsafe paths."""
         safe_references = {asset_id for asset_id in referenced_asset_ids if is_asset_id(asset_id)}
-        return await self._hass.async_add_executor_job(
-            self._collect_garbage,
-            safe_references,
-            max(0, grace_seconds),
-            dry_run,
-        )
+        async with self._write_lock:
+            return await self._hass.async_add_executor_job(
+                self._collect_garbage,
+                safe_references,
+                max(0, grace_seconds),
+                dry_run,
+            )
+
+    @staticmethod
+    def _clear_unreferenced(path: Path) -> None:
+        """Remove the persistent orphan timestamp when an asset is reused."""
+        path.with_name(f".{path.name}.unreferenced").unlink(missing_ok=True)
 
     def _collect_garbage(
         self,
@@ -251,20 +259,36 @@ class FloorplanAssetStore:
         """Collect garbage synchronously on Home Assistant's executor."""
         if not self._directory.is_dir():
             return []
-        cutoff = time.time() - grace_seconds
+        now = time.time()
+        cutoff = now - grace_seconds
         removed: list[str] = []
         for path in sorted(self._directory.iterdir()):
             match = _ASSET_FILE_PATTERN.fullmatch(path.name)
             if match is None or path.is_symlink():
                 continue
             asset_id = match.group(1)
-            if asset_id in referenced_asset_ids:
-                continue
             try:
-                if not path.is_file() or path.stat().st_mtime > cutoff:
+                if not path.is_file():
+                    continue
+                marker = path.with_name(f".{path.name}.unreferenced")
+                if asset_id in referenced_asset_ids:
+                    if not dry_run:
+                        self._clear_unreferenced(path)
+                    continue
+                if marker.is_symlink():
+                    continue
+                if marker.is_file():
+                    unreferenced_since = marker.stat().st_mtime
+                else:
+                    # File age is unrelated to when the last plan stopped using it.
+                    unreferenced_since = now
+                    if not dry_run:
+                        self._atomic_write(marker, b"")
+                if unreferenced_since > cutoff:
                     continue
                 if not dry_run:
                     path.unlink(missing_ok=True)
+                    marker.unlink(missing_ok=True)
                 removed.append(asset_id)
             except OSError as err:
                 _LOGGER.warning("Could not remove orphaned floorplan asset %s: %s", path.name, err)

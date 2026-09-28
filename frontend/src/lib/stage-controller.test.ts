@@ -67,7 +67,7 @@ vi.mock("konva", () => ({
   },
 }));
 
-import { createStageController } from "./stage-controller";
+import { createStageController, fitStageToContent } from "./stage-controller";
 
 class ResizeObserverMock {
   observe(): void {}
@@ -79,6 +79,19 @@ beforeEach(() => {
 });
 
 describe("stage controller touch interaction", () => {
+  it("clamps initial fitting to plan limits and ignores zero-sized content", () => {
+    const stage = new mock.Stage({});
+    Object.assign(stage, { width: () => 800, height: () => 600 });
+    fitStageToContent(stage as never, 4, 4, { minZoom: 0.5, maxZoom: 3 });
+    expect(stage.scaleValue).toBe(3);
+    fitStageToContent(stage as never, 50_000, 50_000, { minZoom: 0.5, maxZoom: 3 });
+    expect(stage.scaleValue).toBe(0.5);
+    const position = { ...stage.positionValue };
+    fitStageToContent(stage as never, 0, 0);
+    expect(stage.scaleValue).toBe(0.5);
+    expect(stage.positionValue).toEqual(position);
+  });
+
   it("pinch-zooms around the gesture center and restores one-finger panning", () => {
     const container = document.createElement("div");
     container.getBoundingClientRect = () =>

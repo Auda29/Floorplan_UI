@@ -89,6 +89,39 @@ class FloorplanStoreTests(unittest.TestCase):
     def test_valid_config_is_accepted(self) -> None:
         self.assertEqual((True, None), FloorplanStore._validate_config_structure(valid_config()))
 
+    def test_fractional_dimensions_survive_normalization_and_reload(self) -> None:
+        config = valid_config()
+        config["plans"][0]["background"].update(width=0.5, height=800.75)
+        saved = FloorplanStore.validate_and_normalize(config)
+        reloaded = FloorplanStore.validate_and_normalize(saved)
+        self.assertEqual(saved, reloaded)
+        self.assertEqual(0.5, reloaded["plans"][0]["background"]["width"])
+        self.assertEqual(800.75, reloaded["plans"][0]["background"]["height"])
+
+    def test_missing_view_filters_are_normalized_for_the_renderer(self) -> None:
+        config = valid_config()
+        del config["views"][0]["filters"]
+        normalized = FloorplanStore.validate_and_normalize(config)
+        self.assertEqual({}, normalized["views"][0]["filters"])
+        self.assertNotIn("filters", config["views"][0])
+
+    def test_invalid_ids_return_validation_errors_instead_of_type_errors(self) -> None:
+        for kind in ("view", "plan", "area", "marker"):
+            for invalid_id in (["oops"], {"bad": "id"}, None, 42, ""):
+                with self.subTest(kind=kind, invalid_id=invalid_id):
+                    config = valid_config()
+                    plan = config["plans"][0]
+                    if kind == "view":
+                        config["views"][0]["id"] = invalid_id
+                    elif kind == "plan":
+                        plan["plan_id"] = invalid_id
+                    elif kind == "area":
+                        plan["areas"] = [{"id": invalid_id}]
+                    else:
+                        plan["markers"][0]["id"] = invalid_id
+                    with self.assertRaisesRegex(ValueError, "IDs must be non-empty strings"):
+                        FloorplanStore.validate_and_normalize(config)
+
     def test_v1_migration_adds_marker_area_and_does_not_mutate_input(self) -> None:
         original = valid_config()
         original["version"] = 1

@@ -1,6 +1,9 @@
 import type { FloorplanBackground, FloorplanConfig, HomeAssistant } from "../types/home-assistant";
+import { validateFloorplanConfig } from "./config-api";
 
 export const MAX_IMAGE_FILE_BYTES = 4_000_000;
+// 20 plans × 4 MB images with base64 overhead, plus 20 MB of configuration.
+export const MAX_PORTABLE_CONFIG_BYTES = 128_000_000;
 const ASSET_API_PATH = "/api/floorplan_ui/assets";
 
 interface AssetUploadResult {
@@ -54,19 +57,34 @@ export async function uploadFloorplanImage(
   return result;
 }
 
-export async function createPortableConfig(config: FloorplanConfig): Promise<FloorplanConfig> {
+export async function fetchFloorplanImage(
+  hass: HomeAssistant,
+  background: FloorplanBackground
+): Promise<Blob> {
+  const response = background.asset_id
+    ? await hass.fetchWithAuth(`${ASSET_API_PATH}/${encodeURIComponent(background.asset_id)}`)
+    : await fetch(background.url ?? "");
+  if (!response.ok) throw new Error("The floorplan image could not be loaded.");
+  return response.blob();
+}
+
+export async function createPortableConfig(
+  hass: HomeAssistant,
+  config: FloorplanConfig
+): Promise<FloorplanConfig> {
   const portable = cloneConfig(config);
+  const images = new Map<string, string>();
   for (const plan of portable.plans) {
     const background = plan.background;
-    if (!background.asset_id || !background.url) {
+    if (!background.asset_id) {
       continue;
     }
-    const response = await fetch(background.url);
-    if (!response.ok) {
-      throw new Error(`The image for "${plan.name}" could not be exported.`);
+    let dataUrl = images.get(background.asset_id);
+    if (!dataUrl) {
+      dataUrl = await blobToDataUrl(await fetchFloorplanImage(hass, background));
+      images.set(background.asset_id, dataUrl);
     }
-    const image = await response.blob();
-    background.url = await blobToDataUrl(image);
+    background.url = dataUrl;
     delete background.asset_id;
     delete background.content_type;
   }
@@ -77,13 +95,32 @@ export async function materializeImportedImages(
   hass: HomeAssistant,
   config: FloorplanConfig
 ): Promise<FloorplanConfig> {
-  const materialized = cloneConfig(config);
-  for (const plan of materialized.plans ?? []) {
+  // Validate metadata before any upload, without sending large base64 images
+  // over the configuration WebSocket (which retains its 20 MB limit).
+  const metadata = cloneConfig(config);
+  const images = new Map<string, string>();
+  for (const plan of Array.isArray(metadata.plans) ? metadata.plans : []) {
+    const background = plan?.background;
+    if (typeof background?.url === "string" && background.url.startsWith("data:")) {
+      images.set(plan.plan_id, background.url);
+      delete background.url;
+      delete background.asset_id;
+      delete background.content_type;
+    }
+  }
+  const materialized = await validateFloorplanConfig(hass, metadata);
+  const uploads = new Map<string, AssetUploadResult>();
+  for (const plan of materialized.plans) {
     const background = plan.background as FloorplanBackground | undefined;
-    if (!background?.url?.startsWith("data:")) {
+    const dataUrl = images.get(plan.plan_id);
+    if (!background || !dataUrl) {
       continue;
     }
-    const uploaded = await uploadFloorplanImage(hass, await dataUrlToBlob(background.url));
+    let uploaded = uploads.get(dataUrl);
+    if (!uploaded) {
+      uploaded = await uploadFloorplanImage(hass, await dataUrlToBlob(dataUrl));
+      uploads.set(dataUrl, uploaded);
+    }
     plan.background = {
       type: "image",
       asset_id: uploaded.asset_id,

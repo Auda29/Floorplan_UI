@@ -103,12 +103,16 @@ class ConfigModel:
             return False, "Config.default_view must be a string"
 
         view_ids = [view.get("id") for view in (views or []) if isinstance(view, dict)]
+        if any(not isinstance(view_id, str) or not view_id for view_id in view_ids):
+            return False, "Config view IDs must be non-empty strings"
         if len(view_ids) != len(set(view_ids)):
             return False, "Config view IDs must be unique"
         if default_view and views and default_view not in view_ids:
             return False, "Config.default_view must reference an existing view"
 
         plan_ids = [plan.get("plan_id") for plan in (plans or []) if isinstance(plan, dict)]
+        if any(not isinstance(plan_id, str) or not plan_id for plan_id in plan_ids):
+            return False, "Config plan IDs must be non-empty strings"
         if len(plan_ids) != len(set(plan_ids)):
             return False, "Config plan IDs must be unique"
 
@@ -161,9 +165,13 @@ class ConfigModel:
                 return False, f"Plan {plan_index}.markers is invalid"
 
             area_ids = [area.get("id") for area in areas if isinstance(area, dict)]
+            if any(not isinstance(area_id, str) or not area_id for area_id in area_ids):
+                return False, f"Plan {plan_index} area IDs must be non-empty strings"
             if len(area_ids) != len(set(area_ids)):
                 return False, f"Plan {plan_index} area IDs must be unique"
             marker_ids = [marker.get("id") for marker in markers if isinstance(marker, dict)]
+            if any(not isinstance(marker_id, str) or not marker_id for marker_id in marker_ids):
+                return False, f"Plan {plan_index} marker IDs must be non-empty strings"
             if len(marker_ids) != len(set(marker_ids)):
                 return False, f"Plan {plan_index} marker IDs must be unique"
 
@@ -448,7 +456,7 @@ class ConfigModel:
             # fall back to default views
             normalized["views"] = default_config()["views"]
         else:
-            normalized["views"] = views
+            normalized["views"] = [{**view, "filters": view.get("filters", {})} for view in views]
 
         available_view_ids = {view["id"] for view in normalized["views"]}
         if normalized["default_view"] not in available_view_ids:
@@ -499,16 +507,10 @@ class ConfigModel:
             content_type = background.get("content_type")
             raw_url = background.get("url")
             url: str = raw_url if isinstance(raw_url, str) else ""
-            width = background.get("width")
-            height = background.get("height")
-            try:
-                width = int(width) if width is not None else 800
-            except (TypeError, ValueError):
-                width = 800
-            try:
-                height = int(height) if height is not None else 600
-            except (TypeError, ValueError):
-                height = 600
+            # Dimensions have already been validated. Preserve positive fractions
+            # so normalization cannot turn a valid dimension into zero.
+            width = background["width"]
+            height = background["height"]
             normalized_background: dict[str, Any] = {
                 "type": bg_type,
                 "width": width,

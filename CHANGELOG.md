@@ -6,6 +6,23 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserve fractional background dimensions across saves and restarts, normalize
+  missing view filters, and reject malformed IDs with configuration errors.
+- Ignore stale in-flight save results after reloading configuration.
+- Start image garbage-collection retention when assets become unreferenced, keep
+  that timestamp across restarts, and serialize collection with uploads.
+- Restore large portable backups with a 128 MB file limit, validate metadata
+  before uploading images, and deduplicate image transfers. Use authenticated
+  image requests so long-lived panels can still load and export backgrounds.
+- Refresh marker interactions when entering or leaving Edit mode and support
+  touch taps on markers, areas, and the empty canvas.
+- Recreate the canvas after conflict reloads and restore the active plan on Undo.
+- Preserve pan and zoom when adding areas, honor zoom limits on initial fit, and
+  render per-view marker values and conditional badges during live updates.
+- Align the HACS minimum Home Assistant version and README release link.
+
 ## [0.2.0-beta.3] - 2026-08-04
 
 ### Fixed
