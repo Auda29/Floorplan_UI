@@ -1,6 +1,6 @@
 ## Floorplan UI – Implementation Status & Task List
 
-### Beta-hardening status (2026-08-03)
+### Beta 4 status (2026-09-28)
 
 Completed and exercised with real tests:
 
@@ -11,19 +11,27 @@ Completed and exercised with real tests:
 - Ruff, Python formatting, Mypy, branch-aware coverage, and pinned CI actions
 - EN/DE localization foundations, responsive `narrow` mode, pinch zoom, keyboard
   actions, and baseline accessibility
-- local minimum/current Home Assistant matrix runs, Hassfest, the published-main
-  HACS baseline, reproducible bundle verification, and six logical local commits
+- successful minimum/current Home Assistant CI runs, HACS, Hassfest, and
+  reproducible production-bundle verification
+- review fixes merged in PR #7 and PR #8: save/reload consistency, asset retention,
+  portable backups up to 128 MB, authenticated image loading, touch/edit-mode
+  marker behavior, conflict reloads, Undo selection, and viewport preservation
+- native modal confirmations with correct Cancel/Enter behavior and stable
+  deletion targets; marker actions and live per-view overlays/badges
+- recovery of corrupt legacy image backgrounds with an original-configuration
+  backup, stronger schema validation, and server validation before browser decoding
+- 59 backend tests, 63 frontend tests, and seven production-bundle browser tests
 
-Still required before a beta release:
+Remaining follow-up work:
 
-- perform an independent review and resolve its findings
-- push the branch and confirm GitHub Actions, including HACS against the branch
 - continue behavior-preserving decomposition of the largest panel/renderer modules
+- aggregate area calculations and a consolidated warning center
+- arbitrary MDI icon rendering and entity-picker virtualization for large installations
 
 The older detailed inventory below remains as history and backlog. If a status
 conflicts with this section, this section takes precedence.
 
-### Current implementation status (Jul 2026)
+### Historical implementation snapshot (Jul 2026)
 
 - **Backend (Home Assistant custom component)**
   - ✅ `floorplan_ui` custom component exists with `manifest.json` and can be loaded by Home Assistant.
