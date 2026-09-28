@@ -161,6 +161,12 @@ configuration metadata still has a 20 MB limit. Metadata is validated and migrat
 before images are uploaded, and shared images are transferred only once per operation.
 Supported migrations work on copies rather than mutating the submitted object.
 
+When loading an older configuration with damaged embedded images, only the invalid
+backgrounds are removed; plans, areas, markers, and usable images are retained.
+Before saving that recovery, the original configuration is backed up in
+`.storage/floorplan_ui.config.recovery`. The Home Assistant log identifies affected
+plans, whose backgrounds can then be replaced.
+
 Report security or functional issues through the repository's
 [issue tracker](https://github.com/Auda29/Floorplan_UI/issues).
 

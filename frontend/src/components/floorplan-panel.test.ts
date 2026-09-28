@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FloorplanConfig, HomeAssistant } from "../types/home-assistant";
+import type { FloorplanConfig, HomeAssistant, Marker } from "../types/home-assistant";
 
 const mocks = vi.hoisted(() => ({
   loadFloorplanConfig: vi.fn(),
@@ -151,6 +151,127 @@ afterEach(() => {
 });
 
 describe("floorplan panel", () => {
+  it.each([undefined, "more-info", "toggle", "none"] as const)(
+    "honors marker action %s for authenticated viewers",
+    async (action) => {
+      const panel = await mount(false);
+      const marker: Marker = {
+        id: "a",
+        entity_id: "light.a",
+        pos: { x: 0, y: 0 },
+        icon: "mdi:lightbulb",
+        label_mode: "auto",
+        tags: [],
+        bind: { primary: { source: "state" } },
+        action: action ? { tap: action } : undefined,
+      };
+      const moreInfo = vi.fn();
+      panel.addEventListener("hass-more-info", moreInfo);
+      await (
+        panel as unknown as { _activateMarker(marker: Marker): Promise<void> }
+      )._activateMarker(marker);
+      expect(moreInfo).toHaveBeenCalledTimes(action === "none" || action === "toggle" ? 0 : 1);
+      expect(panel.hass.callService).toHaveBeenCalledTimes(action === "toggle" ? 1 : 0);
+      if (action === "toggle")
+        expect(panel.hass.callService).toHaveBeenCalledWith("homeassistant", "toggle", {
+          entity_id: "light.a",
+        });
+    }
+  );
+
+  it("reports a rejected toggle without an unhandled promise rejection", async () => {
+    const panel = await mount(false);
+    vi.mocked(panel.hass.callService).mockRejectedValueOnce(new Error("not authorized"));
+    await (
+      panel as unknown as { _activateMarker(marker: Partial<Marker>): Promise<void> }
+    )._activateMarker({ entity_id: "light.a", action: { tap: "toggle" } });
+    await panel.updateComplete;
+    expect(panel.shadowRoot?.textContent).toContain("The entity could not be toggled.");
+  });
+
+  it("does not decode images in the browser before server validation succeeds", async () => {
+    mocks.uploadFloorplanImage.mockRejectedValueOnce(new Error("The image dimensions are unsafe"));
+    const panel = await mount(true);
+    const input = panel.shadowRoot!.querySelector(".file-input") as HTMLInputElement;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["image"], "large.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change"));
+    await vi.waitFor(() =>
+      expect(panel.shadowRoot?.textContent).toContain("The image dimensions are unsafe")
+    );
+    expect(createImageBitmap).not.toHaveBeenCalled();
+    expect(mocks.saveFloorplanConfig).not.toHaveBeenCalled();
+  });
+
+  it.each(["area", "marker", "view"] as const)(
+    "deletes the originally confirmed %s after selection changes",
+    async (kind) => {
+      const source = config();
+      source.views.push(...["a", "b"].map((id) => ({ id, name: id, filters: {} })));
+      source.plans[0].areas = ["a", "b"].map((id) => ({
+        id,
+        area_id: "",
+        tags: [],
+        style: { fillOpacity: 0.4, strokeWidth: 2 },
+        shape: { type: "rect", x: 0, y: 0, width: 100, height: 100 },
+      }));
+      source.plans[0].markers = ["a", "b"].map((id) => ({
+        id,
+        entity_id: `light.${id}`,
+        pos: { x: 0, y: 0 },
+        icon: "mdi:lightbulb",
+        label_mode: "auto",
+        tags: [],
+        bind: { primary: { source: "state" } },
+      }));
+      mocks.loadFloorplanConfig.mockResolvedValueOnce(source);
+      const panel = await mount(true);
+      const internal = panel as unknown as {
+        _selectedAreaId: string;
+        _selectedMarkerId: string;
+        _currentView: string;
+        _askConfirm(): Promise<boolean>;
+        _deleteSelectedArea(): Promise<void>;
+        _deleteSelectedMarker(): Promise<void>;
+        _deleteCurrentView(): Promise<void>;
+      };
+      let confirm!: (value: boolean) => void;
+      vi.spyOn(internal, "_askConfirm").mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            confirm = resolve;
+          })
+      );
+      const field =
+        kind === "area"
+          ? "_selectedAreaId"
+          : kind === "marker"
+            ? "_selectedMarkerId"
+            : "_currentView";
+      internal[field] = "a";
+      const deletion =
+        kind === "area"
+          ? internal._deleteSelectedArea()
+          : kind === "marker"
+            ? internal._deleteSelectedMarker()
+            : internal._deleteCurrentView();
+      internal[field] = "b";
+      confirm(true);
+      await deletion;
+      const saved = mocks.saveFloorplanConfig.mock.calls.at(-1)![1] as FloorplanConfig;
+      const remaining =
+        kind === "view"
+          ? saved.views
+          : kind === "area"
+            ? saved.plans[0].areas
+            : saved.plans[0].markers;
+      expect(remaining.map((item) => item.id)).toContain("b");
+      expect(remaining.map((item) => item.id)).not.toContain("a");
+    }
+  );
+
   it("loads a persisted plan and exposes editing only to administrators", async () => {
     const admin = await mount(true);
 
@@ -198,6 +319,9 @@ describe("floorplan panel", () => {
     fileInput.dispatchEvent(new Event("change"));
     await vi.waitFor(() => expect(mocks.uploadFloorplanImage).toHaveBeenCalledOnce());
     await vi.waitFor(() => expect(panel.shadowRoot?.textContent).toContain("Changes saved."));
+    expect(mocks.uploadFloorplanImage.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(createImageBitmap).mock.invocationCallOrder[0]
+    );
 
     button(panel, "Edit").click();
     await panel.updateComplete;

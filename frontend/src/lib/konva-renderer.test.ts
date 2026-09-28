@@ -86,7 +86,7 @@ function render(editMode: boolean, view?: View) {
   const layer = new MockNode();
   const groups = new Map<string, MockNodeInstance>();
   const onSelect = vi.fn();
-  const onOpenMoreInfo = vi.fn();
+  const onActivate = vi.fn();
   renderMarkers({
     layer: layer as never,
     stage: null,
@@ -98,10 +98,10 @@ function render(editMode: boolean, view?: View) {
     selectedMarkerId: null,
     groups: groups as never,
     onSelect,
-    onOpenMoreInfo,
+    onActivate,
     onMove: vi.fn(),
   });
-  return { layer, group: groups.get("marker")!, onSelect, onOpenMoreInfo };
+  return { layer, group: groups.get("marker")!, onSelect, onActivate };
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -110,8 +110,8 @@ describe("Konva marker rendering", () => {
   it.each([false, true])("handles touch taps in edit mode %s", (editMode) => {
     const result = render(editMode);
     result.group.trigger("tap");
-    expect(editMode ? result.onSelect : result.onOpenMoreInfo).toHaveBeenCalledOnce();
-    expect(editMode ? result.onOpenMoreInfo : result.onSelect).not.toHaveBeenCalled();
+    expect(editMode ? result.onSelect : result.onActivate).toHaveBeenCalledOnce();
+    expect(editMode ? result.onActivate : result.onSelect).not.toHaveBeenCalled();
   });
 
   it("renders and refreshes per-view values and conditional marker badges", () => {
@@ -174,7 +174,9 @@ describe("Konva marker rendering", () => {
     expect(result.group).toBeDefined();
     expect(result.layer.children).toContain(result.group);
     result.group.trigger("click");
-    expect(result.onOpenMoreInfo).toHaveBeenCalledWith("light.kitchen");
+    expect(result.onActivate).toHaveBeenCalledWith(
+      expect.objectContaining({ entity_id: "light.kitchen" })
+    );
     expect(result.onSelect).not.toHaveBeenCalled();
   });
 
@@ -183,7 +185,7 @@ describe("Konva marker rendering", () => {
 
     result.group.trigger("click");
     expect(result.onSelect).toHaveBeenCalledWith("marker");
-    expect(result.onOpenMoreInfo).not.toHaveBeenCalled();
+    expect(result.onActivate).not.toHaveBeenCalled();
   });
 
   it("honors view filters without mutating the plan", () => {
@@ -201,7 +203,7 @@ describe("Konva marker rendering", () => {
       selectedMarkerId: null,
       groups: groups as never,
       onSelect: vi.fn(),
-      onOpenMoreInfo: vi.fn(),
+      onActivate: vi.fn(),
       onMove: vi.fn(),
     });
 

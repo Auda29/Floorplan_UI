@@ -50,11 +50,35 @@ export async function uploadFloorplanImage(
     headers: { "Content-Type": image.type },
     body: image,
   });
-  const result = (await response.json()) as AssetUploadResult | { error?: string };
-  if (!response.ok || !("asset_id" in result)) {
-    throw new Error("error" in result && result.error ? result.error : "Image upload failed.");
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error("Image upload failed. The server returned an invalid response.");
   }
-  return result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error("Image upload failed. The server returned an invalid response.");
+  }
+  if (!response.ok) {
+    throw new Error(
+      "error" in result && typeof result.error === "string" && result.error
+        ? result.error
+        : "Image upload failed."
+    );
+  }
+  if (
+    !("asset_id" in result) ||
+    typeof result.asset_id !== "string" ||
+    !/^[0-9a-f]{64}$/.test(result.asset_id) ||
+    !("content_type" in result) ||
+    (result.content_type !== "image/png" && result.content_type !== "image/jpeg") ||
+    !("url" in result) ||
+    typeof result.url !== "string" ||
+    !result.url
+  ) {
+    throw new Error("Image upload failed. The server returned an invalid response.");
+  }
+  return { asset_id: result.asset_id, content_type: result.content_type, url: result.url };
 }
 
 export async function fetchFloorplanImage(

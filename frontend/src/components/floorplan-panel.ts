@@ -702,6 +702,7 @@ export class FloorplanPanel extends LitElement {
 
   private async _deleteSelectedArea() {
     if (!this._canEdit || !this._config || !this._selectedAreaId) return;
+    const areaId = this._selectedAreaId;
     const plan = this._getCurrentPlan();
     if (!plan) return;
     if (
@@ -713,7 +714,7 @@ export class FloorplanPanel extends LitElement {
     )
       return;
 
-    void this._commitConfig(removeArea(this._config, plan.plan_id, this._selectedAreaId));
+    void this._commitConfig(removeArea(this._config, plan.plan_id, areaId));
 
     this._selectedAreaId = null;
     this._renderFloorplan();
@@ -736,7 +737,7 @@ export class FloorplanPanel extends LitElement {
         this._selectedAreaId = null;
         this._syncCanvasInteractivity();
       },
-      onOpenMoreInfo: (entityId) => this._openMoreInfo(entityId),
+      onActivate: (marker) => void this._activateMarker(marker),
       onMove: (markerId, position) => this._updateMarker(markerId, { pos: position }),
     });
   }
@@ -1040,6 +1041,7 @@ export class FloorplanPanel extends LitElement {
 
   private async _deleteSelectedMarker() {
     if (!this._canEdit || !this._config || !this._selectedMarkerId) return;
+    const markerId = this._selectedMarkerId;
     const plan = this._getCurrentPlan();
     if (
       !plan ||
@@ -1051,9 +1053,23 @@ export class FloorplanPanel extends LitElement {
     )
       return;
 
-    void this._commitConfig(removeMarker(this._config, plan.plan_id, this._selectedMarkerId));
+    void this._commitConfig(removeMarker(this._config, plan.plan_id, markerId));
     this._selectedMarkerId = null;
     this._renderMarkers(this._getCurrentPlan());
+  }
+
+  private async _activateMarker(marker: Marker): Promise<void> {
+    const action = marker.action?.tap ?? "more-info";
+    if (action === "none") return;
+    if (action === "toggle") {
+      try {
+        await this.hass.callService("homeassistant", "toggle", { entity_id: marker.entity_id });
+      } catch {
+        this._setError(this._t("panel.actionFailed"));
+      }
+      return;
+    }
+    this._openMoreInfo(marker.entity_id);
   }
 
   private _openMoreInfo(entityId: string) {
@@ -1147,6 +1163,7 @@ export class FloorplanPanel extends LitElement {
       this._config.views.length <= 1
     )
       return;
+    const viewId = this._currentView;
     if (
       !(await this._askConfirm(
         this._t("dialog.deleteViewMessage"),
@@ -1156,7 +1173,7 @@ export class FloorplanPanel extends LitElement {
     )
       return;
 
-    const result = removeView(this._config, this._currentView);
+    const result = removeView(this._config, viewId);
     if (!result) return;
     void this._commitConfig(result.config);
     this._currentView = result.nextViewId;
@@ -1374,8 +1391,8 @@ export class FloorplanPanel extends LitElement {
 
     let image: ImageBitmap | null = null;
     try {
-      image = await createImageBitmap(file);
       const background = await uploadFloorplanImage(this.hass, file);
+      image = await createImageBitmap(file);
       this._createNewPlan(file.name, {
         type: "image",
         asset_id: background.asset_id,
@@ -1657,7 +1674,7 @@ export class FloorplanPanel extends LitElement {
                         @click=${() =>
                           this._editMode
                             ? this._selectCanvasObject("marker", marker.id)
-                            : this._openMoreInfo(marker.entity_id)}
+                            : this._activateMarker(marker)}
                       >
                         ${t("panel.markerObject", { entity: marker.entity_id })}
                       </button>

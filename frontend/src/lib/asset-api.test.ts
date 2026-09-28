@@ -37,6 +37,39 @@ function config(count = 1): FloorplanConfig {
 }
 
 describe("asset API", () => {
+  it.each([
+    [200, "null"],
+    [200, '"text"'],
+    [200, "[]"],
+    [200, "{}"],
+    [502, "<html>Bad gateway</html>"],
+    [400, '{"error":42}'],
+    [200, '{"asset_id":"invalid","content_type":"image/png","url":"/image"}'],
+  ])(
+    "reports an understandable error for an unexpected upload response (%s, %s)",
+    async (status, body) => {
+      const hass = {
+        fetchWithAuth: vi.fn().mockResolvedValue(new Response(body, { status })),
+      } as unknown as HomeAssistant;
+      await expect(
+        uploadFloorplanImage(hass, new Blob(["image"], { type: "image/png" }))
+      ).rejects.toThrow("Image upload failed.");
+    }
+  );
+
+  it("preserves the backend's image validation message", async () => {
+    const hass = {
+      fetchWithAuth: vi
+        .fn()
+        .mockResolvedValue(
+          new Response('{"error":"The image dimensions are unsafe"}', { status: 400 })
+        ),
+    } as unknown as HomeAssistant;
+    await expect(
+      uploadFloorplanImage(hass, new Blob(["image"], { type: "image/png" }))
+    ).rejects.toThrow("The image dimensions are unsafe");
+  });
+
   it("fetches canonical assets with authentication even when signed URLs have expired", async () => {
     const fetchWithAuth = vi.fn().mockResolvedValue(new Response("image"));
     const hass = { fetchWithAuth } as unknown as HomeAssistant;

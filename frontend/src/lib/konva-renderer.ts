@@ -44,7 +44,7 @@ interface MarkerRenderOptions {
   selectedMarkerId: string | null;
   groups: Map<string, Konva.Group>;
   onSelect(markerId: string): void;
-  onOpenMoreInfo(entityId: string): void;
+  onActivate(marker: Marker): void;
   onMove(markerId: string, position: { x: number; y: number }): void;
 }
 
@@ -291,7 +291,7 @@ export function renderMarkers(options: MarkerRenderOptions): void {
       if (options.editMode) {
         options.onSelect(marker.id);
       } else {
-        options.onOpenMoreInfo(marker.entity_id);
+        options.onActivate(marker);
       }
     });
     group.on("dragend", () => {

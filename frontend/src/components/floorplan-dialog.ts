@@ -18,19 +18,15 @@ export class FloorplanDialog extends LitElement {
   @state() private _value = "";
 
   static styles = css`
-    .backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 1000;
-      display: grid;
-      place-items: center;
-      padding: 20px;
+    dialog::backdrop {
       background: rgba(0, 0, 0, 0.5);
     }
 
-    section {
-      width: min(440px, 100%);
+    dialog {
+      box-sizing: border-box;
+      width: min(440px, calc(100% - 40px));
       padding: 20px;
+      border: none;
       border-radius: 8px;
       background: var(--card-background-color, #fff);
       color: var(--primary-text-color, #212121);
@@ -77,12 +73,19 @@ export class FloorplanDialog extends LitElement {
   }
 
   protected updated(changedProperties: PropertyValues<this>): void {
-    if (changedProperties.has("dialog") && this.dialog?.kind === "text") {
-      this.renderRoot.querySelector("input")?.focus();
+    if (changedProperties.has("dialog") && this.dialog) {
+      const modal = this.renderRoot.querySelector("dialog");
+      if (modal && !modal.open) modal.showModal();
+      // Native modality makes the background inert and traps keyboard focus.
+      // Destructive confirmations start on Cancel; text dialogs start in the input.
+      this.renderRoot
+        .querySelector<HTMLElement>(this.dialog.kind === "text" ? "input" : "button")
+        ?.focus();
     }
   }
 
   private _resolve(value: PanelDialogResult): void {
+    this.renderRoot.querySelector("dialog")?.close();
     this.dispatchEvent(
       new CustomEvent<PanelDialogResult>("floorplan-dialog-resolve", {
         detail: value,
@@ -94,14 +97,28 @@ export class FloorplanDialog extends LitElement {
 
   private _confirm(): void {
     if (!this.dialog) return;
+    if (this.dialog.kind === "text" && !this._value.trim()) return;
     this._resolve(this.dialog.kind === "text" ? this._value : true);
   }
 
   private _onKeydown(event: KeyboardEvent): void {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      this._resolve(null);
-    } else if (event.key === "Enter") {
+    if (event.key === "Tab") {
+      const controls = Array.from(
+        this.renderRoot.querySelectorAll<HTMLElement>("input, button:not([disabled])")
+      );
+      const first = controls[0];
+      const last = controls.at(-1);
+      const focused = this.shadowRoot?.activeElement;
+      if (event.shiftKey && focused === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && focused === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+      return;
+    }
+    if (event.key === "Enter" && event.target instanceof HTMLInputElement && !event.isComposing) {
       event.preventDefault();
       this._confirm();
     }
@@ -111,43 +128,49 @@ export class FloorplanDialog extends LitElement {
     const dialog = this.dialog;
     if (!dialog) return nothing;
     return html`
-      <div
-        class="backdrop"
-        @click=${(event: MouseEvent) => {
-          if (event.target === event.currentTarget) this._resolve(null);
+      <dialog
+        aria-label=${dialog.title}
+        @cancel=${(event: Event) => {
+          event.preventDefault();
+          this._resolve(null);
         }}
+        @click=${(event: MouseEvent) => {
+          if (event.target !== event.currentTarget) return;
+          const bounds = (event.currentTarget as HTMLDialogElement).getBoundingClientRect();
+          if (
+            event.clientX < bounds.left ||
+            event.clientX > bounds.right ||
+            event.clientY < bounds.top ||
+            event.clientY > bounds.bottom
+          )
+            this._resolve(null);
+        }}
+        @keydown=${this._onKeydown}
       >
-        <section
-          role="dialog"
-          aria-modal="true"
-          aria-label=${dialog.title}
-          @keydown=${this._onKeydown}
-        >
-          <h2>${dialog.title}</h2>
-          ${dialog.message ? html`<p>${dialog.message}</p>` : nothing}
-          ${dialog.kind === "text"
-            ? html`
-                <input
-                  .value=${this._value}
-                  @input=${(event: Event) => {
-                    this._value = (event.target as HTMLInputElement).value;
-                  }}
-                />
-              `
-            : nothing}
-          <div class="actions">
-            <button type="button" @click=${() => this._resolve(null)}>${this.cancelLabel}</button>
-            <button
-              type="button"
-              class=${dialog.destructive ? "destructive" : ""}
-              ?disabled=${dialog.kind === "text" && !this._value.trim()}
-              @click=${this._confirm}
-            >
-              ${dialog.confirmLabel}
-            </button>
-          </div>
-        </section>
-      </div>
+        <h2>${dialog.title}</h2>
+        ${dialog.message ? html`<p>${dialog.message}</p>` : nothing}
+        ${dialog.kind === "text"
+          ? html`
+              <input
+                .value=${this._value}
+                @input=${(event: Event) => {
+                  this._value = (event.target as HTMLInputElement).value;
+                }}
+              />
+            `
+          : nothing}
+        <div class="actions">
+          <button type="button" @click=${() => this._resolve(null)}>${this.cancelLabel}</button>
+          <button
+            type="button"
+            class=${dialog.destructive ? "destructive" : ""}
+            ?disabled=${dialog.kind === "text" && !this._value.trim()}
+            @click=${this._confirm}
+          >
+            ${dialog.confirmLabel}
+          </button>
+        </div>
+      </dialog>
     `;
   }
 }

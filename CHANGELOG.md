@@ -8,6 +8,15 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- Make confirmation dialogs truly modal, preserve their deletion targets, and
+  allow Enter on Cancel to cancel rather than confirm a destructive action.
+- Recover damaged legacy image backgrounds individually while preserving plans,
+  markers, and a copy of the original configuration in `floorplan_ui.config.recovery`.
+- Honor marker tap actions (`more-info`, `toggle`, and `none`) for mouse, touch,
+  and keyboard activation, and validate marker fields against the schema contract.
+- Validate uploads on the server before browser decoding and handle malformed
+  upload responses with understandable errors.
+
 - Preserve fractional background dimensions across saves and restarts, normalize
   missing view filters, and reject malformed IDs with configuration errors.
 - Ignore stale in-flight save results after reloading configuration.
@@ -158,7 +167,7 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.1...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.3...HEAD
 [0.2.0-beta.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.2...v0.2.0-beta.1
 [0.1.2]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.1.0...v0.1.1
