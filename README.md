@@ -1,5 +1,7 @@
 # Floorplan UI
 
+[Website (DE)](https://auda29.github.io/Floorplan_UI/) · [Website (EN)](https://auda29.github.io/Floorplan_UI/en.html)
+
 Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
