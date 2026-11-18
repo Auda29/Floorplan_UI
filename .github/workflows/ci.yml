@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   frontend:
-    runs-on: ubuntu-latest
+    # Playwright 1.54.2 ships Chromium system dependencies for Ubuntu 24.04.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996 # v6
