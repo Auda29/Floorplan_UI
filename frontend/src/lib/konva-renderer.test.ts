@@ -5,7 +5,10 @@ const { MockNode } = vi.hoisted(() => {
   class MockNode {
     public readonly attrs: Record<string, unknown>;
     public readonly children: MockNode[] = [];
-    public readonly handlers = new Map<string, (event?: { cancelBubble: boolean }) => void>();
+    public readonly handlers = new Map<
+      string,
+      (event: { cancelBubble: boolean; evt?: { defaultPrevented: boolean } }) => void
+    >();
 
     public constructor(attrs: Record<string, unknown> = {}) {
       this.attrs = attrs;
@@ -16,8 +19,8 @@ const { MockNode } = vi.hoisted(() => {
     public on(name: string, handler: () => void) {
       for (const event of name.split(" ")) this.handlers.set(event, handler);
     }
-    public trigger(name: string) {
-      this.handlers.get(name)?.({ cancelBubble: false });
+    public trigger(name: string, defaultPrevented = false) {
+      this.handlers.get(name)?.({ cancelBubble: false, evt: { defaultPrevented } });
     }
     public destroyChildren() {
       this.children.length = 0;
@@ -31,6 +34,15 @@ const { MockNode } = vi.hoisted(() => {
     }
     public position() {
       return { x: Number(this.attrs.x ?? 0), y: Number(this.attrs.y ?? 0) };
+    }
+    public width() {
+      return this.attrs.width;
+    }
+    public height() {
+      return this.attrs.height;
+    }
+    public getAbsoluteScale() {
+      return { x: 0.25, y: 0.25 };
     }
     public findOne(selector: string) {
       const name = selector.replace(".", "");
@@ -55,7 +67,7 @@ vi.mock("konva", () => ({
   },
 }));
 
-import { refreshMarkerLiveValues, renderMarkers } from "./konva-renderer";
+import { refreshMarkerLiveValues, renderAreas, renderMarkers } from "./konva-renderer";
 
 function marker(entityId = "light.kitchen"): Marker {
   return {
@@ -112,6 +124,13 @@ describe("Konva marker rendering", () => {
     result.group.trigger("tap");
     expect(editMode ? result.onSelect : result.onActivate).toHaveBeenCalledOnce();
     expect(editMode ? result.onActivate : result.onSelect).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("ignores taps suppressed by a pinch in edit mode %s", (editMode) => {
+    const result = render(editMode);
+    result.group.trigger("tap", true);
+    expect(result.onSelect).not.toHaveBeenCalled();
+    expect(result.onActivate).not.toHaveBeenCalled();
   });
 
   it("renders and refreshes per-view values and conditional marker badges", () => {
@@ -209,5 +228,44 @@ describe("Konva marker rendering", () => {
 
     expect(groups.size).toBe(0);
     expect(source).toEqual(original);
+  });
+});
+
+describe("Konva area rendering", () => {
+  it("keeps selection handles above overlapping areas and resizes in plan coordinates", () => {
+    const floor = plan([]);
+    const room = {
+      id: "room",
+      area_id: "",
+      shape: { type: "rect" as const, x: 0, y: 0, width: 40, height: 30 },
+      style: { fill: "#ffffff", stroke: "#000000", fillOpacity: 0.4, strokeWidth: 2 },
+      tags: [],
+    };
+    floor.areas = [room, { ...room, id: "overlap" }];
+    const layer = new MockNode();
+    renderAreas({
+      layer: layer as never,
+      plan: floor,
+      view: undefined,
+      states: {},
+      areas: [],
+      editMode: true,
+      selectedAreaId: room.id,
+      shapes: new Map(),
+      onSelect: vi.fn(),
+      onUpdateShape: vi.fn(),
+      onRerender: vi.fn(),
+    });
+
+    const transformer = layer.children.at(-1)?.attrs;
+    expect(transformer?.nodes).toEqual([layer.children[0]]);
+    const boundBox = transformer?.boundBoxFunc as (
+      previous: { width: number; height: number },
+      next: { width: number; height: number }
+    ) => { width: number; height: number };
+    const previous = { width: 10, height: 7.5 };
+    const valid = { width: 8, height: 6 };
+    expect(boundBox(previous, valid)).toBe(valid);
+    expect(boundBox(previous, { width: 4, height: 6 })).toBe(previous);
   });
 });

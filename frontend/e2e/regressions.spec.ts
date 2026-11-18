@@ -29,7 +29,7 @@ declare global {
 
 test.use({ hasTouch: true, viewport: { width: 1400, height: 900 } });
 
-async function mount(page: Page, action?: "none" | "toggle"): Promise<void> {
+async function mount(page: Page): Promise<void> {
   await page.route("http://localhost/", (route) =>
     route.fulfill({
       contentType: "text/html",
@@ -48,7 +48,7 @@ async function mount(page: Page, action?: "none" | "toggle"): Promise<void> {
     type: "module",
   });
   await page.waitForFunction(() => !!customElements.get("floorplan-ui-panel"));
-  await page.evaluate((action) => {
+  await page.evaluate(() => {
     const harness: Harness = {
       conflict: false,
       moreInfo: 0,
@@ -80,7 +80,6 @@ async function mount(page: Page, action?: "none" | "toggle"): Promise<void> {
                 label_mode: "auto",
                 tags: [],
                 bind: { primary: { source: "state" } },
-                action: action ? { tap: action } : undefined,
               },
             ],
             view: { minZoom: 0.1, maxZoom: 5 },
@@ -128,7 +127,7 @@ async function mount(page: Page, action?: "none" | "toggle"): Promise<void> {
       harness.moreInfo += 1;
     });
     document.body.append(panel);
-  }, action);
+  });
   await expect(page.locator("floorplan-ui-panel canvas")).toHaveCount(3);
   await expect
     .poll(() =>
@@ -284,8 +283,19 @@ test("delete confirmation traps focus and Enter on Cancel preserves the marker",
 
 for (const action of ["none", "toggle"] as const) {
   test(`marker ${action} action works with mouse, touch and keyboard`, async ({ page }) => {
-    await mount(page, action);
+    await mount(page);
     const panel = page.locator("floorplan-ui-panel");
+    await panel.getByRole("button", { name: "Edit", exact: true }).click();
+    const marker = panel.getByRole("button", { name: "Marker for light.kitchen", exact: true });
+    await marker.focus();
+    await page.keyboard.press("Enter");
+    await panel.getByLabel("When tapped").selectOption(action);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.regressionHarness.config.plans[0].markers[0].action?.tap)
+      )
+      .toBe(action);
+    await panel.getByRole("button", { name: "Done", exact: true }).click();
     const position = await markerPosition(page);
     await page.mouse.click(position.x, position.y);
     await page.touchscreen.tap(position.x, position.y);

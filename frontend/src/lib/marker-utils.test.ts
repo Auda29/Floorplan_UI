@@ -102,6 +102,22 @@ describe("marker display values", () => {
     expect(getMarkerValue(marker, undefined)).toBe("Unavailable");
   });
 
+  it.each(["unavailable", "unknown"])(
+    "does not display stale attribute values or value units when the entity is %s",
+    (status) => {
+      const unavailable = { ...state, state: status };
+      const markerWithAttribute: Marker = {
+        ...marker,
+        bind: {
+          primary: { source: "state", format: "{value}%" },
+          secondary: { source: "attr", attr: "brightness", format: "{value} lx" },
+        },
+      };
+      expect(getMarkerValue(markerWithAttribute, unavailable)).toBe("Unavailable");
+      expect(getMarkerValue(markerWithAttribute, unavailable, "secondary")).toBe("Unavailable");
+    }
+  );
+
   it("keeps the configured label mode during live updates", () => {
     expect(getMarkerLabel({ ...marker, label_mode: "short" }, state)).toBe("kitchen");
     expect(getMarkerLabel({ ...marker, label_mode: "off" }, state)).toBe("");

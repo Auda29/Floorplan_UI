@@ -26,11 +26,11 @@ export function createStageController(
   const bounds = container.getBoundingClientRect();
   const stage = new Konva.Stage({
     container,
-    width: Math.max(bounds.width, 400),
-    height: Math.max(bounds.height, 300),
+    width: bounds.width || 400,
+    height: bounds.height || 300,
     draggable: true,
   });
-  const backgroundLayer = new Konva.Layer();
+  const backgroundLayer = new Konva.Layer({ listening: false });
   const areasLayer = new Konva.Layer();
   const markersLayer = new Konva.Layer();
   stage.add(backgroundLayer);
@@ -38,7 +38,7 @@ export function createStageController(
   stage.add(markersLayer);
 
   stage.on("click tap", (event) => {
-    if (options.isEditing() && event.target === stage) {
+    if (options.isEditing() && event.target === stage && !event.evt?.defaultPrevented) {
       options.onEmptyCanvasClick();
     }
   });
@@ -46,7 +46,7 @@ export function createStageController(
   stage.on("wheel", (event) => {
     event.evt.preventDefault();
     const pointer = stage.getPointerPosition();
-    if (!pointer) return;
+    if (!pointer || event.evt.deltaY === 0) return;
 
     const oldScale = stage.scaleX();
     const mousePoint = {
@@ -63,25 +63,27 @@ export function createStageController(
     });
   });
 
+  let pinching = false;
   let lastTouchCenter: { x: number; y: number } | null = null;
   let lastTouchDistance = 0;
-  const resetPinch = (): void => {
-    lastTouchCenter = null;
-    lastTouchDistance = 0;
-    stage.draggable(true);
-  };
 
-  stage.on("touchmove", (event) => {
-    const first = event.evt.touches[0];
-    const second = event.evt.touches[1];
+  // Konva suppresses its touchmove events while a node is being dragged.
+  const onPinch = (event: TouchEvent): void => {
+    const first = event.touches[0];
+    const second = event.touches[1];
+    if (!pinching && !second) return;
+    event.preventDefault();
+    event.stopPropagation();
     if (!first || !second) {
-      resetPinch();
+      lastTouchCenter = null;
       return;
     }
-    event.evt.preventDefault();
-    stage.draggable(false);
+    if (!pinching) {
+      pinching = true;
+      stage.draggable(false);
+    }
 
-    const rect = container.getBoundingClientRect();
+    const rect = stage.getContent().getBoundingClientRect();
     const firstPoint = { x: first.clientX - rect.left, y: first.clientY - rect.top };
     const secondPoint = { x: second.clientX - rect.left, y: second.clientY - rect.top };
     const center = {
@@ -110,16 +112,33 @@ export function createStageController(
     });
     lastTouchCenter = center;
     lastTouchDistance = distance;
-  });
+  };
 
-  stage.on("touchend", (event) => {
-    if (event.evt.touches.length < 2) resetPinch();
-  });
+  const onPinchEnd = (event: TouchEvent): void => {
+    if (!pinching) return;
+    // Let Konva finish drag cleanup, but suppress taps for the whole gesture.
+    event.preventDefault();
+    lastTouchCenter = null;
+    if (event.touches.length === 0) {
+      pinching = false;
+      stage.draggable(true);
+    }
+  };
+
+  const touchOptions = { capture: true, passive: false };
+  container.addEventListener("touchstart", onPinch, touchOptions);
+  container.addEventListener("touchmove", onPinch, touchOptions);
+  container.addEventListener("touchend", onPinchEnd, touchOptions);
+  container.addEventListener("touchcancel", onPinchEnd, touchOptions);
 
   const resizeObserver = new ResizeObserver(([entry]) => {
     if (!entry) return;
     const { width, height } = entry.contentRect;
     if (width > 0 && height > 0) {
+      stage.position({
+        x: stage.x() + (width - stage.width()) / 2,
+        y: stage.y() + (height - stage.height()) / 2,
+      });
       stage.size({ width, height });
     }
   });
@@ -131,6 +150,10 @@ export function createStageController(
     areasLayer,
     markersLayer,
     destroy: () => {
+      container.removeEventListener("touchstart", onPinch, touchOptions);
+      container.removeEventListener("touchmove", onPinch, touchOptions);
+      container.removeEventListener("touchend", onPinchEnd, touchOptions);
+      container.removeEventListener("touchcancel", onPinchEnd, touchOptions);
       resizeObserver.disconnect();
       stage.destroy();
     },

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FloorplanConfig, Plan } from "../types/home-assistant";
-import { addPlan, createPlan, removePlan, renamePlan } from "./plan-config";
+import { createArea } from "./area-config";
+import { addPlan, createPlan, removePlan, renamePlan, replacePlanBackground } from "./plan-config";
 
 function config(plans: Plan[] = []): FloorplanConfig {
   return {
@@ -49,6 +50,35 @@ describe("plan config", () => {
 
     expect(result?.config.plans).toEqual([second]);
     expect(result?.nextPlanId).toBe("second");
+  });
+
+  it("keeps all areas and markers at their relative positions after replacing a plan image", () => {
+    const plan = createPlan("ground", "Ground.png", background);
+    plan.markers.push({
+      id: "light",
+      entity_id: "light.kitchen",
+      pos: { x: 200, y: 150 },
+      label_mode: "auto",
+      tags: [],
+      bind: { primary: { source: "state" } },
+    });
+    plan.areas.push(
+      createArea("kitchen", "rect", { x: 200, y: 180 }),
+      createArea("hall", "polygon", { x: 500, y: 200 })
+    );
+    const replacement = { ...background, asset_id: "b".repeat(64), width: 1600, height: 300 };
+    const [result] = replacePlanBackground(config([plan]), plan, replacement).plans;
+    expect(result.background).toEqual(replacement);
+    expect(result.markers[0].pos).toEqual({ x: 400, y: 75 });
+    expect(result.areas[0].shape).toEqual({ type: "rect", x: 160, y: 50, width: 480, height: 80 });
+    expect(result.areas[1].shape).toEqual({
+      type: "polygon",
+      x: 1000,
+      y: 100,
+      points: [-240, -35, 200, -45, 280, 30, -160, 45],
+    });
+    expect(plan.markers[0].pos).toEqual({ x: 200, y: 150 });
+    expect(plan.background).toBe(background);
   });
 
   it("returns null when the requested plan does not exist", () => {

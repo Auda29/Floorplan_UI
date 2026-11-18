@@ -82,7 +82,7 @@ export function renderAreas(options: AreaRenderOptions): void {
 
     areaShape.on("click tap", (event) => {
       event.cancelBubble = true;
-      if (options.editMode) options.onSelect(area.id);
+      if (options.editMode && !event.evt?.defaultPrevented) options.onSelect(area.id);
     });
     areaShape.on("dragend", () => {
       if (!options.editMode) return;
@@ -94,14 +94,15 @@ export function renderAreas(options: AreaRenderOptions): void {
     layer.add(areaShape);
     shapes.set(area.id, areaShape);
     addAreaAnnotation(layer, area, areaShape, options.view, options.states, options.areas);
+  }
 
-    if (options.editMode && options.selectedAreaId === area.id) {
-      if (area.shape.type === "polygon" && areaShape instanceof Konva.Line) {
-        addPolygonAnchors(layer, area, areaShape, options);
-      } else if (area.shape.type === "rect" && areaShape instanceof Konva.Rect) {
-        addRectangleTransformer(layer, area.id, areaShape, options);
-      }
-    }
+  if (!options.editMode || !options.selectedAreaId) return;
+  const selectedShape = shapes.get(options.selectedAreaId);
+  const selectedArea = plan.areas?.find((area) => area.id === options.selectedAreaId);
+  if (selectedArea?.shape.type === "polygon" && selectedShape instanceof Konva.Line) {
+    addPolygonAnchors(layer, selectedArea, selectedShape, options);
+  } else if (selectedArea?.shape.type === "rect" && selectedShape instanceof Konva.Rect) {
+    addRectangleTransformer(layer, selectedArea.id, selectedShape, options);
   }
 }
 
@@ -232,16 +233,25 @@ function addRectangleTransformer(
   rectangle: Konva.Rect,
   options: AreaRenderOptions
 ): void {
+  const minWidth = Math.min(20, rectangle.width());
+  const minHeight = Math.min(20, rectangle.height());
   const transformer = new Konva.Transformer({
     nodes: [rectangle],
     rotateEnabled: false,
     keepRatio: false,
+    flipEnabled: false,
+    ignoreStroke: true,
     anchorSize: 9,
-    boundBoxFunc: (oldBox, newBox) => (newBox.width < 20 || newBox.height < 20 ? oldBox : newBox),
+    boundBoxFunc: (oldBox, newBox) => {
+      const scale = layer.getAbsoluteScale();
+      return newBox.width < minWidth * scale.x || newBox.height < minHeight * scale.y
+        ? oldBox
+        : newBox;
+    },
   });
   rectangle.on("transformend", () => {
-    const width = Math.max(20, rectangle.width() * rectangle.scaleX());
-    const height = Math.max(20, rectangle.height() * rectangle.scaleY());
+    const width = Math.max(minWidth, rectangle.width() * rectangle.scaleX());
+    const height = Math.max(minHeight, rectangle.height() * rectangle.scaleY());
     rectangle.scale({ x: 1, y: 1 });
     options.onUpdateShape(areaId, {
       x: rectangle.x(),
@@ -288,6 +298,7 @@ export function renderMarkers(options: MarkerRenderOptions): void {
 
     group.on("click tap", (event) => {
       event.cancelBubble = true;
+      if (event.evt?.defaultPrevented) return;
       if (options.editMode) {
         options.onSelect(marker.id);
       } else {
@@ -408,48 +419,6 @@ function markerValues(
     (badge) => `${badge.icon ? `${badge.icon} ` : ""}${badge.label ?? badge.entity_id}`
   );
   return [values, ...badges].filter(Boolean).join("\n");
-}
-
-export function drawEmptyState(layer: Konva.Layer, stageWidth: number, stageHeight: number): void {
-  layer.add(
-    new Konva.Rect({
-      x: 0,
-      y: 0,
-      width: stageWidth,
-      height: stageHeight,
-      fill: "#f5f5f5",
-    })
-  );
-
-  const icon = new Konva.Text({
-    x: stageWidth / 2,
-    y: stageHeight / 2 - 50,
-    text: "🏠",
-    fontSize: 48,
-  });
-  icon.offsetX(icon.width() / 2);
-  layer.add(icon);
-
-  const title = new Konva.Text({
-    x: stageWidth / 2,
-    y: stageHeight / 2 + 10,
-    text: "No Floorplan Loaded",
-    fontSize: 20,
-    fontStyle: "bold",
-    fill: "#333",
-  });
-  title.offsetX(title.width() / 2);
-  layer.add(title);
-
-  const subtitle = new Konva.Text({
-    x: stageWidth / 2,
-    y: stageHeight / 2 + 40,
-    text: 'Click "Edit" → "Upload Image" to get started',
-    fontSize: 14,
-    fill: "#666",
-  });
-  subtitle.offsetX(subtitle.width() / 2);
-  layer.add(subtitle);
 }
 
 export function drawImageErrorState(

@@ -23,7 +23,7 @@ export const floorplanPanelStyles = css`
   }
 
   .workspace.editing {
-    grid-template-columns: clamp(320px, 24vw, 390px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 390px);
   }
 
   .toolbar {
@@ -31,8 +31,10 @@ export const floorplanPanelStyles = css`
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    background: var(--app-header-background-color, #03a9f4);
-    color: var(--app-header-text-color, #fff);
+    gap: 12px;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
+    border-bottom: 1px solid var(--divider-color, #ddd);
     min-height: 48px;
     box-sizing: border-box;
   }
@@ -53,7 +55,7 @@ export const floorplanPanelStyles = css`
   h1 {
     margin: 0;
     font-size: 20px;
-    font-weight: 500;
+    font-weight: 600;
   }
 
   .plan-select {
@@ -70,70 +72,74 @@ export const floorplanPanelStyles = css`
     min-width: 0;
     max-width: 100%;
     padding: 4px 8px;
-    border-radius: 4px;
-    border: none;
+    border-radius: 6px;
+    border: 1px solid var(--divider-color, #d7d7d7);
+    background: var(--card-background-color, #fff);
+    color: inherit;
     font-size: 14px;
+  }
+
+  .views-bar {
+    min-width: 0;
+    padding: 0 16px;
+    background: var(--card-background-color, #fff);
+    border-bottom: 1px solid var(--divider-color, #ddd);
   }
 
   .view-tabs {
     display: flex;
     gap: 4px;
-    min-width: 0;
+    overflow-x: auto;
   }
 
   .view-tab {
-    min-width: 0;
+    flex: none;
     max-width: min(260px, calc(100vw - 40px));
+    min-height: 44px;
     overflow: hidden;
     padding: 6px 12px;
     border: none;
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.2);
-    color: inherit;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--secondary-text-color, #555);
     cursor: pointer;
     font-size: 14px;
     text-overflow: ellipsis;
-    transition: background 0.2s;
     white-space: nowrap;
   }
 
   .view-tab:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--secondary-background-color, #eee);
   }
 
   .view-tab.active {
-    background: rgba(255, 255, 255, 0.95);
-    color: var(--app-header-background-color, #03a9f4);
+    border-bottom-color: var(--primary-color, #03a9f4);
+    color: var(--primary-text-color, #212121);
   }
 
   .edit-toggle {
+    min-height: 36px;
     padding: 6px 16px;
-    border: 2px solid rgba(255, 255, 255, 0.8);
-    border-radius: 4px;
-    background: transparent;
+    border: 1px solid var(--divider-color, #d7d7d7);
+    border-radius: 6px;
+    background: var(--card-background-color, #fff);
     color: inherit;
     cursor: pointer;
     font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s;
+    font-weight: 600;
   }
 
-  .edit-toggle:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
-
+  .edit-toggle:hover,
   .edit-toggle.active {
-    background: rgba(255, 255, 255, 0.95);
-    color: var(--app-header-background-color, #03a9f4);
-    border-color: transparent;
+    background: var(--secondary-background-color, #eee);
   }
 
   .canvas-container {
     flex: 1;
     position: relative;
     overflow: hidden;
-    background: #f5f5f5;
-    min-height: 400px;
+    min-height: 0;
+    background: var(--secondary-background-color, #f5f5f5);
   }
 
   .canvas-wrapper {
@@ -154,9 +160,16 @@ export const floorplanPanelStyles = css`
     padding: 20px;
   }
 
+  .empty-state {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+
   .empty-state h2 {
     margin: 0;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: 500;
     color: var(--primary-text-color, #333);
   }
@@ -171,8 +184,8 @@ export const floorplanPanelStyles = css`
     padding: 12px 24px;
     border: none;
     border-radius: 4px;
-    background: var(--primary-color, #03a9f4);
-    color: #fff;
+    background: var(--primary-text-color, #212121);
+    color: var(--card-background-color, #fff);
     cursor: pointer;
     font-size: 16px;
     font-weight: 500;
@@ -180,6 +193,24 @@ export const floorplanPanelStyles = css`
 
   .empty-state .upload-btn:hover {
     opacity: 0.9;
+  }
+
+  .canvas-fit,
+  .empty-state .import-btn {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--divider-color, #d7d7d7);
+    border-radius: 6px;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
+    cursor: pointer;
+    font-size: 14px;
+  }
+
+  .canvas-fit {
+    position: absolute;
+    inset-inline-end: 12px;
+    bottom: 12px;
   }
 
   .file-input,
@@ -193,7 +224,7 @@ export const floorplanPanelStyles = css`
     overflow-y: auto;
     padding: 14px;
     box-sizing: border-box;
-    border-inline-end: 1px solid var(--divider-color, #d7d7d7);
+    border-inline-start: 1px solid var(--divider-color, #d7d7d7);
     background: var(--card-background-color, #fff);
     color: var(--primary-text-color, #212121);
     scrollbar-gutter: stable;
@@ -210,8 +241,6 @@ export const floorplanPanelStyles = css`
     color: var(--secondary-text-color, #616161);
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
   }
 
   .editor-panel-header strong {
@@ -403,8 +432,21 @@ export const floorplanPanelStyles = css`
     outline-offset: -6px;
   }
 
+  .panel-feedback {
+    position: absolute;
+    z-index: 1;
+    top: 12px;
+    inset-inline: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    pointer-events: none;
+  }
+
   .status {
-    padding: 6px 16px;
+    padding: 6px 12px;
+    border-radius: 6px;
     background: #e8f5e9;
     color: #1b5e20;
     font-size: 13px;
@@ -416,7 +458,8 @@ export const floorplanPanelStyles = css`
   }
 
   .status button {
-    margin-left: 12px;
+    margin-inline-start: 8px;
+    pointer-events: auto;
   }
 
   .viewer-note {
@@ -449,41 +492,36 @@ export const floorplanPanelStyles = css`
     border: 0;
   }
 
-  .narrow .toolbar,
-  .narrow .toolbar-left {
-    align-items: stretch;
-    flex-wrap: wrap;
+  .editor-selection-hint {
+    margin: 0 2px 12px;
+    color: var(--secondary-text-color, #616161);
+    font-size: 13px;
+    line-height: 1.5;
   }
 
-  .narrow .toolbar,
-  .narrow .toolbar-left {
-    gap: 8px;
+  .entity-filters {
+    margin: 8px 0;
   }
 
-  .narrow .toolbar-left {
-    width: 100%;
-    flex: 1 1 100%;
-  }
-
-  .narrow .plan-select {
-    flex: 1 1 220px;
-  }
-
-  .narrow .view-tabs {
-    width: 100%;
-    overflow-x: auto;
+  .entity-filters summary {
+    display: list-item;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 12px 0;
+    min-height: 44px;
+    box-sizing: border-box;
   }
 
   .narrow .workspace.editing {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(260px, 45vh) minmax(400px, 1fr);
+    grid-template-rows: minmax(300px, 50svh) minmax(260px, 45svh);
     align-content: start;
     overflow-y: auto;
   }
 
   .narrow .editor-panel {
-    border-inline-end: 0;
-    border-bottom: 1px solid var(--divider-color, #d7d7d7);
+    border-inline-start: 0;
+    border-top: 1px solid var(--divider-color, #d7d7d7);
   }
 
   .narrow button,
@@ -493,22 +531,16 @@ export const floorplanPanelStyles = css`
   }
 
   @media (max-width: 900px) {
-    .toolbar,
-    .toolbar-left {
-      align-items: flex-start;
-      flex-wrap: wrap;
-    }
-
     .workspace.editing {
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: minmax(260px, 45vh) minmax(400px, 1fr);
+      grid-template-rows: minmax(300px, 50svh) minmax(260px, 45svh);
       align-content: start;
       overflow-y: auto;
     }
 
     .editor-panel {
-      border-inline-end: 0;
-      border-bottom: 1px solid var(--divider-color, #d7d7d7);
+      border-inline-start: 0;
+      border-top: 1px solid var(--divider-color, #d7d7d7);
     }
 
     .toolbar button,
@@ -519,13 +551,29 @@ export const floorplanPanelStyles = css`
     .editor-panel .entity-card {
       min-height: 44px;
     }
-
-    .view-tabs {
-      flex-wrap: wrap;
-    }
   }
 
   @media (max-width: 520px) {
+    .toolbar {
+      padding: 8px 12px;
+    }
+
+    .toolbar-left {
+      gap: 8px;
+    }
+
+    .plan-select span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+
+    .edit-toggle {
+      padding-inline: 10px;
+    }
+
     .editor-actions,
     .editor-fields {
       grid-template-columns: minmax(0, 1fr);

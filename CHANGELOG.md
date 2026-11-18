@@ -6,6 +6,36 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-18
+
+### Added
+
+- Add first-run actions for uploading a floorplan or restoring a backup, a
+  control to fit the plan to the canvas, and a marker action selector.
+- Replace a plan image in place and retain the relative positions of areas
+  and markers.
+- Include live Home Assistant entities that have no entity registry entry in
+  the marker picker.
+
+### Changed
+
+- Give the canvas priority, keep view switching in a scrollable row, and show
+  selected area or marker properties at the top of the editor. On phones the
+  plan sits above the editing controls.
+- Use Home Assistant's Pillow version so the integration can be installed on
+  current Home Assistant releases.
+
+### Fixed
+
+- Create plans, areas, and markers over plain HTTP on the local network.
+- Keep the canvas center when its size changes, handle pinch zoom during
+  touch drags, and keep selected-area resize and vertex handles accessible.
+- Retry failed migration writes on the next load. Validate older backups even
+  when their metadata needs migration, and allow individual plans with missing
+  images to be repaired.
+- Hide stale values for unavailable entities and normalize older area configs
+  before applying view filters.
+
 ## [0.2.0-beta.4] - 2026-09-28
 
 ### Fixed

@@ -105,9 +105,10 @@ class FloorplanStore(ConfigModel):
                                 ", ".join(invalid_images),
                                 STORAGE_KEY,
                             )
-                        self._data = self._normalize_config(materialized)
-                        if self._data != data:
-                            await self._store.async_save(self._data)
+                        normalized = self._normalize_config(materialized)
+                        if normalized != data:
+                            await self._store.async_save(normalized)
+                        self._data = normalized
         return self._data
 
     async def async_save(self, data: dict[str, Any]) -> None:
@@ -134,7 +135,7 @@ class FloorplanStore(ConfigModel):
                 raise ConfigConflictError(current_revision)
 
             normalized = self.validate_and_normalize(config)
-            await self._async_validate_asset_references(normalized)
+            await self._async_validate_asset_references(normalized, current_config=current)
             normalized["revision"] = current_revision + 1
             await self.async_save(normalized)
             try:
@@ -198,8 +199,12 @@ class FloorplanStore(ConfigModel):
         config: dict[str, Any],
         *,
         allow_embedded_images: bool = False,
+        current_config: dict[str, Any] | None = None,
     ) -> None:
-        """Ensure every persisted image reference resolves to a local file."""
+        """Validate new image references without blocking repairs to existing plans."""
+        current_backgrounds = {
+            plan["plan_id"]: plan["background"] for plan in (current_config or {}).get("plans", [])
+        }
         for plan_index, plan in enumerate(config.get("plans", [])):
             background = plan.get("background", {})
             if allow_embedded_images and background.get("url"):
@@ -208,6 +213,11 @@ class FloorplanStore(ConfigModel):
             asset_id = background.get("asset_id")
             content_type = background.get("content_type")
             if asset_id is None:
+                continue
+            current = current_backgrounds.get(plan["plan_id"], {})
+            if asset_id == current.get("asset_id") and content_type == current.get("content_type"):
+                # Keep existing references when a restore left some files missing.
+                # Each affected plan can then be repaired independently.
                 continue
             if not await self._asset_store.async_exists(asset_id, content_type):
                 raise ValueError(f"Plan {plan_index} references a missing image asset")

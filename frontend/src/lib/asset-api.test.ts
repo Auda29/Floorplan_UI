@@ -131,10 +131,35 @@ describe("asset API", () => {
     const fetchWithAuth = vi.fn();
     const hass = {
       fetchWithAuth,
-      callWS: vi.fn().mockRejectedValue(new Error("Invalid width")),
+      callWS: vi.fn().mockRejectedValue({ code: "invalid_config", message: "Invalid width" }),
     } as unknown as HomeAssistant;
     await expect(materializeImportedImages(hass, input)).rejects.toThrow("Invalid width");
     expect(fetchWithAuth).not.toHaveBeenCalled();
+  });
+
+  it("lets the server migrate a legacy backup with no plans field", async () => {
+    const legacy = { version: 1 };
+    const normalized = config(0);
+    const callWS = vi.fn().mockResolvedValue({ config: normalized });
+    const fetchWithAuth = vi.fn();
+    const hass = { callWS, fetchWithAuth } as unknown as HomeAssistant;
+
+    await expect(materializeImportedImages(hass, legacy as FloorplanConfig)).resolves.toEqual(
+      normalized
+    );
+    expect(callWS).toHaveBeenCalledWith({ type: "floorplan_ui/validate_config", config: legacy });
+    expect(fetchWithAuth).not.toHaveBeenCalled();
+  });
+
+  it.each([null, {}])("forwards an invalid plan to the metadata validator (%s)", async (plan) => {
+    const raw = { version: 3, plans: [plan] };
+    const callWS = vi.fn().mockRejectedValue(new Error("Invalid plan"));
+    const hass = { callWS } as unknown as HomeAssistant;
+
+    await expect(
+      materializeImportedImages(hass, raw as unknown as FloorplanConfig)
+    ).rejects.toThrow("Invalid plan");
+    expect(callWS).toHaveBeenCalledWith({ type: "floorplan_ui/validate_config", config: raw });
   });
 
   it("uses Home Assistant's authenticated fetch helper for raw uploads", async () => {

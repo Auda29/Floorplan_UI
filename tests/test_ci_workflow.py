@@ -39,6 +39,9 @@ class CiWorkflowContractTests(unittest.TestCase):
         self.assertIn("--cov-fail-under=40", home_assistant)
         self.assertNotIn("coverage run", home_assistant)
 
+    def test_frontend_uses_playwright_supported_runner(self) -> None:
+        self.assertEqual("ubuntu-24.04", self.jobs["frontend"]["runs-on"])
+
     def test_current_home_assistant_matrix_tracks_current_packages(self) -> None:
         matrix = self.jobs["home-assistant"]["strategy"]["matrix"]["include"]
         current = next(entry for entry in matrix if entry["name"] == "current")

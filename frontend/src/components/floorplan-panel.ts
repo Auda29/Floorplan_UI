@@ -22,7 +22,6 @@ import type {
 import { defaultTagsForEntity } from "../lib/marker-utils";
 import { createLocalizer } from "../lib/i18n";
 import {
-  CURRENT_CONFIG_VERSION,
   errorCode,
   loadFloorplanConfig,
   loadRegistry,
@@ -47,7 +46,13 @@ import {
 } from "../lib/stage-controller";
 import { createView, moveView, removeView, updateView } from "../lib/view-config";
 import { addMarker, removeMarker, updateMarker } from "../lib/marker-config";
-import { addPlan, createPlan, removePlan, renamePlan } from "../lib/plan-config";
+import {
+  addPlan,
+  createPlan,
+  removePlan,
+  renamePlan,
+  replacePlanBackground,
+} from "../lib/plan-config";
 import {
   addArea,
   createArea,
@@ -57,7 +62,6 @@ import {
   type AreaGeometryUpdate,
 } from "../lib/area-config";
 import {
-  drawEmptyState,
   drawImageErrorState,
   refreshMarkerLiveValues,
   renderAreas,
@@ -95,6 +99,7 @@ export class FloorplanPanel extends LitElement {
 
   @state() private _config: FloorplanConfig | null = null;
   @state() private _loading = true;
+  @state() private _loadFailed = false;
   @state() private _editMode = false;
   @state() private _currentView = "all";
   @state() private _currentPlanId: string | null = null;
@@ -123,6 +128,7 @@ export class FloorplanPanel extends LitElement {
   private _renderGeneration = 0;
   private _liveRefreshTimer: number | null = null;
   private _entityPointerDrag: EntityPointerDrag | null = null;
+  private _replacePlanId: string | null = null;
   private readonly _history = new ConfigHistory();
   private _dialogResolver: ((value: string | boolean | null) => void) | null = null;
   private readonly _saveQueue = new ConfigSaveQueue(
@@ -187,6 +193,7 @@ export class FloorplanPanel extends LitElement {
   private async _loadConfig() {
     this._destroyStage();
     this._loading = true;
+    this._loadFailed = false;
     try {
       this._config = await loadFloorplanConfig(this.hass);
       this._saveQueue.reset(this._config.revision);
@@ -205,12 +212,8 @@ export class FloorplanPanel extends LitElement {
       }
       this._reconcileSelection();
     } catch {
-      this._config = {
-        version: CURRENT_CONFIG_VERSION,
-        revision: 0,
-        plans: [],
-        views: [],
-      };
+      this._config = null;
+      this._loadFailed = true;
       this._saveQueue.reset(0);
       this._history.reset();
       this._setError(this._t("panel.loadError"));
@@ -449,9 +452,7 @@ export class FloorplanPanel extends LitElement {
     const stageWidth = this._stage.width();
     const stageHeight = this._stage.height();
 
-    if (!plan) {
-      this._drawEmptyState(stageWidth, stageHeight);
-    } else if (plan.background?.asset_id || plan.background?.url) {
+    if (plan && (plan.background?.asset_id || plan.background?.url)) {
       this._renderAreas(plan);
       this._renderMarkers(plan);
 
@@ -509,6 +510,11 @@ export class FloorplanPanel extends LitElement {
   private _fitToScreen(imgWidth: number, imgHeight: number) {
     if (!this._stage) return;
     fitStageToContent(this._stage, imgWidth, imgHeight, this._getCurrentPlan()?.view);
+  }
+
+  private _fitCurrentPlan() {
+    const plan = this._getCurrentPlan();
+    if (plan) this._fitToScreen(plan.background.width, plan.background.height);
   }
 
   private _toggleEditMode() {
@@ -597,12 +603,6 @@ export class FloorplanPanel extends LitElement {
     });
   }
 
-  private _drawEmptyState(stageWidth: number, stageHeight: number) {
-    if (this._backgroundLayer) {
-      drawEmptyState(this._backgroundLayer, stageWidth, stageHeight);
-    }
-  }
-
   private _drawImageErrorState(stageWidth: number, stageHeight: number) {
     if (this._backgroundLayer) {
       drawImageErrorState(this._backgroundLayer, stageWidth, stageHeight);
@@ -648,17 +648,36 @@ export class FloorplanPanel extends LitElement {
 
   private async _loadRegistry() {
     if (!this._canEdit) return;
+    const entities = new Map<string, HassEntityRegistry>();
+    for (const state of Object.values(this.hass.states)) {
+      const { friendly_name: name, icon } = state.attributes;
+      entities.set(state.entity_id, {
+        entity_id: state.entity_id,
+        name: typeof name === "string" ? name : null,
+        icon: typeof icon === "string" ? icon : null,
+        domain: state.entity_id.split(".", 1)[0],
+        area_id: null,
+        device_id: null,
+      });
+    }
     try {
       const result = await loadRegistry(this.hass);
       this._haAreas = result.areas;
-      this._haEntities = result.entities.sort((left, right) =>
-        left.entity_id.localeCompare(right.entity_id)
-      );
+      for (const entry of result.entities) {
+        const state = entities.get(entry.entity_id);
+        entities.set(entry.entity_id, {
+          ...entry,
+          name: entry.name ?? state?.name ?? null,
+          icon: entry.icon ?? state?.icon ?? null,
+        });
+      }
     } catch {
       this._haAreas = [];
-      this._haEntities = [];
       this._setError(this._t("panel.registryLoadError"));
     }
+    this._haEntities = [...entities.values()].sort((left, right) =>
+      left.entity_id.localeCompare(right.entity_id)
+    );
   }
 
   private _getSelectedArea(): AreaShape | null {
@@ -732,11 +751,7 @@ export class FloorplanPanel extends LitElement {
       editMode: this._editMode,
       selectedMarkerId: this._selectedMarkerId,
       groups: this._markerGroups,
-      onSelect: (markerId) => {
-        this._selectedMarkerId = markerId;
-        this._selectedAreaId = null;
-        this._syncCanvasInteractivity();
-      },
+      onSelect: (markerId) => this._selectCanvasObject("marker", markerId),
       onActivate: (marker) => void this._activateMarker(marker),
       onMove: (markerId, position) => this._updateMarker(markerId, { pos: position }),
     });
@@ -998,6 +1013,13 @@ export class FloorplanPanel extends LitElement {
     const labelMode = (event.target as HTMLSelectElement).value as Marker["label_mode"];
     this._updateMarker(marker.id, { label_mode: labelMode });
     this._renderMarkers(this._getCurrentPlan());
+  }
+
+  private _onMarkerActionChange(event: Event) {
+    const marker = this._getSelectedMarker();
+    const tap = (event.target as HTMLSelectElement).value;
+    if (!marker || (tap !== "more-info" && tap !== "toggle" && tap !== "none")) return;
+    this._updateMarker(marker.id, { action: { ...marker.action, tap } });
   }
 
   private _updateMarkerBinding(
@@ -1376,6 +1398,8 @@ export class FloorplanPanel extends LitElement {
 
   private async _handleFileUpload(e: Event) {
     if (!this._canEdit) return;
+    const replacePlanId = this._replacePlanId;
+    this._replacePlanId = null;
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = "";
@@ -1393,14 +1417,24 @@ export class FloorplanPanel extends LitElement {
     try {
       const background = await uploadFloorplanImage(this.hass, file);
       image = await createImageBitmap(file);
-      this._createNewPlan(file.name, {
+      const imageBackground: FloorplanBackground = {
         type: "image",
         asset_id: background.asset_id,
         content_type: background.content_type,
         url: background.url,
         width: image.width,
         height: image.height,
-      });
+      };
+      if (replacePlanId) {
+        const config = this._config;
+        const plan = config?.plans.find((candidate) => candidate.plan_id === replacePlanId);
+        if (!config || !plan || !this._canEdit) return;
+        const saved = this._commitConfig(replacePlanBackground(config, plan, imageBackground));
+        if (this._currentPlanId === replacePlanId) this._renderFloorplan();
+        await saved;
+      } else {
+        this._createNewPlan(file.name, imageBackground);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : this._t("panel.imageUploadFailed");
       this._setError(message);
@@ -1418,7 +1452,9 @@ export class FloorplanPanel extends LitElement {
     this._renderFloorplan();
   }
 
-  private _triggerFileUpload() {
+  private _triggerFileUpload(replacePlanId: string | null = null) {
+    if (!this._canEdit) return;
+    this._replacePlanId = replacePlanId;
     (this.renderRoot.querySelector(".file-input") as HTMLInputElement)?.click();
   }
 
@@ -1428,7 +1464,10 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _newId(prefix: string): string {
-    return `${prefix}_${globalThis.crypto.randomUUID()}`;
+    // HTTP access by LAN address is common in Home Assistant.
+    const words = crypto.getRandomValues(new Uint32Array(4));
+    const suffix = Array.from(words, (word) => word.toString(16).padStart(8, "0")).join("");
+    return `${prefix}_${suffix}`;
   }
 
   private _renderEditor(
@@ -1472,6 +1511,7 @@ export class FloorplanPanel extends LitElement {
       },
       {
         uploadImage: () => this._triggerFileUpload(),
+        replaceImage: () => this._triggerFileUpload(currentPlan?.plan_id),
         undo: () => this._undo(),
         redo: () => this._redo(),
         renamePlan: () => this._renameCurrentPlan(),
@@ -1510,6 +1550,7 @@ export class FloorplanPanel extends LitElement {
         updateMarkerTags: (event) => this._onMarkerTagsChange(event),
         updateMarkerArea: (event) => this._onMarkerAreaChange(event),
         updateMarkerLabelMode: (event) => this._onMarkerLabelModeChange(event),
+        updateMarkerAction: (event) => this._onMarkerActionChange(event),
         updateMarkerBinding: (slot, field, event) => this._updateMarkerBinding(slot, field, event),
         addMarkerSecondaryBinding: () => this._addMarkerSecondaryBinding(),
         removeMarkerSecondaryBinding: () => this._removeMarkerSecondaryBinding(),
@@ -1540,39 +1581,26 @@ export class FloorplanPanel extends LitElement {
         <div class="toolbar">
           <div class="toolbar-left">
             <h1>${t("panel.title")}</h1>
-            <label class="plan-select">
-              <span>${t("panel.plan")}</span>
-              <select @change=${this._selectPlan}>
-                <option value="" ?selected=${!currentPlan}>${t("panel.selectPlan")}</option>
-                ${plans.map(
-                  (plan) => html`
-                    <option
-                      value=${plan.plan_id}
-                      ?selected=${currentPlan?.plan_id === plan.plan_id}
-                    >
-                      ${plan.name}
-                    </option>
-                  `
-                )}
-              </select>
-            </label>
-            <div class="view-tabs" role="tablist">
-              ${views.map(
-                (view) => html`
-                  <button
-                    class="view-tab ${this._currentView === view.id ? "active" : ""}"
-                    role="tab"
-                    aria-selected=${this._currentView === view.id ? "true" : "false"}
-                    @click=${() => this._setView(view.id)}
-                  >
-                    ${view.id === this._config?.default_view ? "★ " : ""}${view.name}
-                  </button>
-                `
-              )}
-            </div>
+            ${currentPlan
+              ? html`<label class="plan-select">
+                  <span>${t("panel.plan")}</span>
+                  <select @change=${this._selectPlan}>
+                    ${plans.map(
+                      (plan) => html`
+                        <option
+                          value=${plan.plan_id}
+                          ?selected=${currentPlan?.plan_id === plan.plan_id}
+                        >
+                          ${plan.name}
+                        </option>
+                      `
+                    )}
+                  </select>
+                </label>`
+              : ""}
           </div>
           <div class="toolbar-right">
-            ${this._canEdit
+            ${this._canEdit && this._config
               ? html`
                   <button
                     class="edit-toggle ${this._editMode ? "active" : ""}"
@@ -1582,42 +1610,30 @@ export class FloorplanPanel extends LitElement {
                     ${this._editMode ? t("panel.done") : t("panel.edit")}
                   </button>
                 `
-              : html`<span class="viewer-note">${t("panel.viewOnly")}</span>`}
+              : !this._canEdit
+                ? html`<span class="viewer-note">${t("panel.viewOnly")}</span>`
+                : ""}
           </div>
         </div>
-
-        ${this._saveState === "pending"
-          ? html`<div class="status" role="status" aria-live="polite">${t("panel.pending")}</div>`
-          : ""}
-        ${this._saveState === "saving"
-          ? html`<div class="status" role="status" aria-live="polite">${t("panel.saving")}</div>`
-          : ""}
-        ${this._notice
-          ? html`<div class="status" role="status" aria-live="polite">${this._notice}</div>`
-          : ""}
-        ${this._error
-          ? html`
-              <div class="status error" role="alert">
-                ${this._error}
-                ${this._saveState === "failed"
-                  ? this._saveConflict
-                    ? html`
-                        <button type="button" @click=${this._reloadAfterConflict}>
-                          ${t("panel.reload")}
-                        </button>
-                      `
-                    : html`<button type="button" @click=${this._retrySave}>
-                        ${t("panel.retry")}
-                      </button>`
-                  : ""}
+        ${currentPlan
+          ? html`<nav class="views-bar" aria-label=${t("panel.views")}>
+              <div class="view-tabs">
+                ${views.map(
+                  (view) => html`
+                    <button
+                      class="view-tab ${this._currentView === view.id ? "active" : ""}"
+                      type="button"
+                      aria-pressed=${this._currentView === view.id ? "true" : "false"}
+                      @click=${() => this._setView(view.id)}
+                    >
+                      ${view.id === this._config?.default_view ? "★ " : ""}${view.name}
+                    </button>
+                  `
+                )}
               </div>
-            `
+            </nav>`
           : ""}
         <div class="workspace ${this._editMode ? "editing" : ""}">
-          ${this._editMode
-            ? this._renderEditor(currentPlan, currentView, selectedArea, selectedMarker)
-            : ""}
-
           <input
             type="file"
             class="file-input"
@@ -1646,6 +1662,70 @@ export class FloorplanPanel extends LitElement {
             ${this._loading
               ? html`<div class="loading" role="status">${t("panel.loading")}</div>`
               : html`<div class="canvas-wrapper"></div>`}
+            <div class="panel-feedback">
+              ${this._saveState === "pending"
+                ? html`<div class="status" role="status" aria-live="polite">
+                    ${t("panel.pending")}
+                  </div>`
+                : ""}
+              ${this._saveState === "saving"
+                ? html`<div class="status" role="status" aria-live="polite">
+                    ${t("panel.saving")}
+                  </div>`
+                : ""}
+              ${this._notice
+                ? html`<div class="status" role="status" aria-live="polite">${this._notice}</div>`
+                : ""}
+              ${this._error
+                ? html`
+                    <div class="status error" role="alert">
+                      ${this._error}
+                      ${this._loadFailed
+                        ? html`<button type="button" @click=${this._loadConfig}>
+                            ${t("panel.retry")}
+                          </button>`
+                        : this._saveState === "failed"
+                          ? this._saveConflict
+                            ? html`
+                                <button type="button" @click=${this._reloadAfterConflict}>
+                                  ${t("panel.reload")}
+                                </button>
+                              `
+                            : html`<button type="button" @click=${this._retrySave}>
+                                ${t("panel.retry")}
+                              </button>`
+                          : ""}
+                    </div>
+                  `
+                : ""}
+            </div>
+            ${currentPlan && !this._loading
+              ? html`<button class="canvas-fit" type="button" @click=${this._fitCurrentPlan}>
+                  ${t("panel.fit")}
+                </button>`
+              : ""}
+            ${!this._loading && !this._loadFailed && !currentPlan
+              ? html`<div class="empty-state">
+                  <h2>${t("panel.emptyTitle")}</h2>
+                  <p>${this._canEdit ? t("panel.emptyDescription") : t("panel.emptyViewer")}</p>
+                  ${this._canEdit
+                    ? html`<button
+                          class="upload-btn"
+                          type="button"
+                          @click=${() => this._triggerFileUpload()}
+                        >
+                          ${t("panel.upload")}
+                        </button>
+                        <button
+                          class="import-btn"
+                          type="button"
+                          @click=${this._triggerConfigImport}
+                        >
+                          ${t("editor.import")}
+                        </button>`
+                    : ""}
+                </div>`
+              : ""}
             <section class="canvas-accessibility" aria-label=${t("panel.objects")}>
               <ul>
                 ${currentPlan?.areas.map(
@@ -1684,6 +1764,9 @@ export class FloorplanPanel extends LitElement {
               </ul>
             </section>
           </div>
+          ${this._editMode && this._config
+            ? this._renderEditor(currentPlan, currentView, selectedArea, selectedMarker)
+            : ""}
         </div>
         <floorplan-dialog
           .dialog=${this._dialog}

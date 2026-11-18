@@ -109,6 +109,22 @@ class FloorplanStoreTests(unittest.TestCase):
         self.assertEqual({}, normalized["views"][0]["filters"])
         self.assertNotIn("filters", config["views"][0])
 
+    def test_legacy_null_area_tags_are_normalized_for_tagged_views(self) -> None:
+        config = valid_config()
+        config["plans"][0]["areas"] = [
+            {
+                "id": "room",
+                "area_id": None,
+                "tags": None,
+                "shape": {"type": "rect", "x": 0, "y": 0, "width": 100, "height": 80},
+            }
+        ]
+        normalized = FloorplanStore.validate_and_normalize(config)
+        area = normalized["plans"][0]["areas"][0]
+        self.assertEqual([], area["tags"])
+        self.assertEqual("", area["area_id"])
+        self.assertEqual(normalized, FloorplanStore.validate_and_normalize(normalized))
+
     def test_invalid_ids_return_validation_errors_instead_of_type_errors(self) -> None:
         for kind in ("view", "plan", "area", "marker"):
             for invalid_id in (["oops"], {"bad": "id"}, None, 42, ""):
@@ -321,6 +337,58 @@ class FloorplanStoreTests(unittest.TestCase):
 class FloorplanLoadTests(unittest.IsolatedAsyncioTestCase):
     """Recover broken legacy backgrounds without discarding plan data."""
 
+    async def test_concurrent_update_waits_for_migration_to_persist(self) -> None:
+        original = valid_config()
+        original["version"] = 2
+        migration_started = asyncio.Event()
+        finish_migration = asyncio.Event()
+        writes = []
+
+        async def persist(data):
+            if data["revision"] == 0:
+                migration_started.set()
+                await finish_migration.wait()
+            writes.append(data)
+
+        disk = types.SimpleNamespace(
+            async_load=AsyncMock(return_value=original), async_save=persist
+        )
+        assets = types.SimpleNamespace(async_exists=AsyncMock(return_value=True))
+        assets.async_collect_garbage = AsyncMock(return_value=[])
+        with patch.object(STORE_MODULE, "Store", return_value=disk):
+            store = FloorplanStore(object(), assets)
+
+        loading = asyncio.create_task(store.async_get_config())
+        await migration_started.wait()
+        edited = valid_config()
+        edited["plans"][0]["name"] = "Renamed"
+        updating = asyncio.create_task(store.async_update_config(edited, 0))
+        try:
+            await asyncio.sleep(0)
+            self.assertFalse(updating.done())
+            self.assertEqual([], writes)
+        finally:
+            finish_migration.set()
+            await asyncio.gather(loading, updating)
+
+        self.assertEqual([0, 1], [data["revision"] for data in writes])
+        self.assertEqual("Renamed", writes[-1]["plans"][0]["name"])
+
+    async def test_failed_migration_write_is_retried_on_next_load(self) -> None:
+        original = valid_config()
+        original["version"] = 2
+        disk = types.SimpleNamespace(
+            async_load=AsyncMock(return_value=original),
+            async_save=AsyncMock(side_effect=[OSError("disk unavailable"), None]),
+        )
+        with patch.object(STORE_MODULE, "Store", return_value=disk):
+            store = FloorplanStore(object(), object())
+        with self.assertRaisesRegex(OSError, "disk unavailable"):
+            await store.async_get_config()
+
+        self.assertEqual(3, (await store.async_get_config())["version"])
+        self.assertEqual(2, disk.async_save.await_count)
+
     async def test_recovers_bad_images_preserves_original_and_survives_reload(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             hass = types.SimpleNamespace(
@@ -451,6 +519,30 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         await self.store.async_update_config(valid_config(), 0)
 
         self.assertEqual([{"a" * 64}], self.asset_store.collected)
+
+    async def test_save_can_repair_one_of_several_missing_backgrounds(self) -> None:
+        original = valid_config()
+        original["plans"][0]["background"]["asset_id"] = "b" * 64
+        second = copy.deepcopy(original["plans"][0])
+        second["plan_id"] = "second-floor"
+        second["background"]["asset_id"] = "c" * 64
+        original["plans"].append(second)
+        self.store._data = original
+
+        edited = copy.deepcopy(original)
+        edited["plans"][0]["background"]["asset_id"] = "a" * 64
+        updated = await self.store.async_update_config(edited, 0)
+        self.assertEqual("a" * 64, updated["plans"][0]["background"]["asset_id"])
+        self.assertEqual(second, updated["plans"][1])
+
+        with self.assertRaisesRegex(ValueError, "Plan 1 references a missing image asset"):
+            await self.store.async_validate_config(updated)
+
+        edited["plans"][1]["plan_id"] = "new-floor"
+        with self.assertRaisesRegex(ValueError, "Plan 1 references a missing image asset"):
+            await self.store.async_update_config(edited, 1)
+
+        self.assertEqual(1, self.store._data["revision"])
 
     async def test_garbage_collection_failure_does_not_undo_saved_config(self) -> None:
         async def fail_collection(_referenced: set[str]) -> list[str]:

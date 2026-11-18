@@ -6,12 +6,12 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> **Status:** public beta prerelease (current release: `0.2.0-beta.4`).
-> Back up production data while testing `0.x` prereleases.
+> Current HACS release: `0.2.0`.
 
 ## Current capabilities
 
-- Import and manage multiple floorplans.
+- Import and manage multiple floorplans. Replace a plan image while preserving
+  the relative positions of its areas and markers.
 - Pan and zoom the canvas.
 - Add, move, resize, and style rectangular areas; add, move, and vertex-edit
   polygonal areas; bind both to HA Areas and tags.
@@ -42,21 +42,21 @@ sidebar panel with separate view and admin-only edit modes.
   undo/redo/delete actions, live regions, focus indicators, and an accessible
   canvas object list.
 
-Beta 4 includes the persistence, backup, editor, and dialog corrections from the
-September review. Further incremental module decomposition, aggregate area calculations, and a
-dedicated warning center remain follow-up work. Missing or unavailable entities
-remain visible with an unavailable value and neutral marker color.
+Missing or unavailable entities remain visible with an unavailable value and
+neutral marker color. Aggregate area calculations and a dedicated warning
+center remain follow-up work.
 
 ## Installation with HACS
 
 1. Add `https://github.com/Auda29/Floorplan_UI` as a custom HACS repository of
    type **Integration**.
-2. Enable beta/prerelease versions for this repository in HACS, select
-   **0.2.0-beta.4**, install **Floorplan UI**, and restart Home Assistant.
+2. Install **Floorplan UI 0.2.0** from HACS and restart Home Assistant.
 3. Open **Settings → Devices & services → Add integration** and select
    **Floorplan UI**.
-4. Open **Floorplan** from the sidebar. Administrators can enable Edit mode;
-   other users receive view mode, with entity actions subject to Home Assistant permissions.
+4. Open **Floorplan** from the sidebar. An administrator can upload the first
+   plan image directly from the empty panel. Select **Edit** to add areas and
+   markers. Other users can use the view and its marker actions within their
+   Home Assistant permissions.
 
 All runtime files, including the compiled panel bundle, live inside
 `custom_components/floorplan_ui/`, so no manual `/config/www` copy is required.
@@ -64,12 +64,13 @@ All runtime files, including the compiled panel bundle, live inside
 Minimum supported Home Assistant version: **2025.7.3**. CI additionally checks a
 current Home Assistant/Python combination.
 
-### Updating to Beta 4
+### Updating to 0.2.0
 
-Update through HACS with beta/prerelease visibility enabled, restart Home Assistant,
-and reload the Floorplan panel. Existing plans and schema-version-3 configurations
-remain compatible. Beta 4 fixes saved marker positions, conflict reloads, Undo,
-touch activation, and confirmation-dialog keyboard behavior.
+Update through HACS, restart Home Assistant, and reload the Floorplan panel.
+Existing plans, asset references, and schema-version-3 configurations remain
+compatible. Plan, view, and backup controls are grouped under **Plan and views**
+in the editor. When replacing a plan image, use the same framing if you want
+areas and markers to line up with the original drawing.
 
 Portable JSON backups may now be up to **128 MB**, including embedded images;
 configuration metadata remains limited to **20 MB**, and each image to **4 MB**.
@@ -78,8 +79,8 @@ plan no longer immediately removes the image needed for Undo.
 
 ### Marker actions and overlays
 
-In a marker's JSON configuration, `action.tap` accepts `more-info` (the default),
-`toggle`, or `none`. The same action applies to mouse clicks, touch taps, and the
+Select a marker in Edit mode and use **When tapped** to choose entity details,
+toggle, or no action. The same action applies to mouse clicks, touch taps, and the
 keyboard-accessible object list. Edit mode selects markers instead of executing
 their actions. Toggle requests use Home Assistant's normal service permissions.
 
@@ -131,12 +132,10 @@ The complete user-facing release history is maintained in
 [`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
 from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
 The current public release is
-[`v0.2.0-beta.4`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.2.0-beta.4).
+[`v0.2.0`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.2.0).
 
 Versions below `1.0.0` represent initial development and may contain breaking
-changes. Non-prerelease versions are offered through the normal HACS channel.
-The current `0.2.0-beta.*` series is marked as GitHub prereleases and requires
-beta/prerelease visibility in HACS; `v0.1.2` remains the latest non-prerelease.
+changes. HACS offers `0.2.0` through its normal release channel.
 
 ## Release checklist
 

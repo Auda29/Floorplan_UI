@@ -40,6 +40,10 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     if (message.type() === "error") browserErrors.push(message.text());
   });
   await page.setViewportSize({ width: 1920, height: 946 });
+  await page.addInitScript(() => {
+    // randomUUID() is unavailable when Home Assistant is served over plain LAN HTTP.
+    Object.defineProperty(Crypto.prototype, "randomUUID", { value: undefined });
+  });
   await page.route("http://localhost/", (route) =>
     route.fulfill({ contentType: "text/html", body: "<!doctype html><html><body></body></html>" })
   );
@@ -134,7 +138,12 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
 
   const panel = page.locator("floorplan-ui-panel");
   await expect(panel.locator("h1")).toHaveText("Floorplan");
-  await panel.locator("input.file-input").setInputFiles({
+  await expect(panel.getByRole("heading", { name: "No floorplan configured" })).toBeVisible();
+  const fileChooser = page.waitForEvent("filechooser");
+  await panel.getByRole("button", { name: "Upload floorplan" }).click();
+  await (
+    await fileChooser
+  ).setFiles({
     name: "ground.png",
     mimeType: "image/png",
     buffer: png,
@@ -618,10 +627,10 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   await reloaded.getByRole("button", { name: "Bearbeiten" }).click();
   await expect(reloaded.getByRole("button", { name: "+ Rechteck hinzufügen" })).toBeVisible();
   await expect(
-    reloaded.getByRole("tab", {
+    reloaded.getByRole("button", {
       name: "★ SehrLangeDeutscheAnsichtFürBeleuchtungKlimatisierungBeschattungEnergieHeizungLüftungSicherheitMultimedia",
     })
-  ).toBeVisible();
+  ).toHaveAttribute("aria-pressed", "true");
   const narrowLayout = await reloaded.evaluate((element) => {
     const root = element.shadowRoot!;
     const containerElement = root.querySelector<HTMLElement>(".container")!;
@@ -642,8 +651,9 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     return {
       editorWidth: editorBounds.width,
       canvasWidth: canvasBounds.width,
-      editorBottom: editorBounds.bottom,
-      canvasTop: canvasBounds.top,
+      editorTop: editorBounds.top,
+      canvasBottom: canvasBounds.bottom,
+      canvasHeight: canvasBounds.height,
       editorHeight: editorBounds.height,
       stageWidth: stageElement.getBoundingClientRect().width,
       stageHeight: stageElement.getBoundingClientRect().height,
@@ -657,11 +667,11 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     };
   });
   expect(narrowLayout.editorWidth).toBeCloseTo(narrowLayout.canvasWidth, 0);
-  expect(narrowLayout.canvasTop).toBeCloseTo(narrowLayout.editorBottom, 0);
+  expect(narrowLayout.canvasBottom).toBeCloseTo(narrowLayout.editorTop, 0);
   expect(narrowLayout.editorHeight).toBeGreaterThanOrEqual(260);
   expect(narrowLayout.editorHeight).toBeLessThanOrEqual(410);
   expect(narrowLayout.stageWidth).toBeCloseTo(narrowLayout.canvasWidth, 0);
-  expect(narrowLayout.stageHeight).toBeCloseTo(400, 0);
+  expect(narrowLayout.stageHeight).toBeCloseTo(narrowLayout.canvasHeight, 0);
   expect(narrowLayout.editorHasHorizontalOverflow).toBe(false);
   expect(narrowLayout.buttonHeight).toBeGreaterThanOrEqual(44);
   expect(narrowLayout.minimumTouchTargetHeight).toBeGreaterThanOrEqual(44);

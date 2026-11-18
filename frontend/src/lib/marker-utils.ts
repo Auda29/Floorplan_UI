@@ -8,6 +8,8 @@ import type {
   View,
 } from "../types/home-assistant";
 
+const UNAVAILABLE_STATES = ["unavailable", "unknown"];
+
 export function getEntityDomain(entityId: string): string {
   return entityId.split(".", 1)[0] ?? "";
 }
@@ -43,7 +45,7 @@ export function resolveValueBinding(
   state: HassEntity | undefined
 ): string {
   if (!binding) return "";
-  if (!state) return "Unavailable";
+  if (!state || UNAVAILABLE_STATES.includes(state.state)) return "Unavailable";
 
   const rawValue =
     binding.source === "attr" && binding.attr ? state.attributes[binding.attr] : state.state;
@@ -99,7 +101,7 @@ export function markerMatchesView(marker: Marker, view: View | undefined): boole
 }
 
 export function getMarkerColor(state: HassEntity | undefined): string {
-  if (!state || ["unavailable", "unknown"].includes(state.state)) return "#9e9e9e";
+  if (!state || UNAVAILABLE_STATES.includes(state.state)) return "#9e9e9e";
   if (["on", "open", "playing", "home", "heat"].includes(state.state)) return "#ffb300";
   return "#1976d2";
 }

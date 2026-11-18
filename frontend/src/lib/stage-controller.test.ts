@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mock = vi.hoisted(() => {
   class Node {
     add = vi.fn();
+
+    constructor(public config: Record<string, unknown> = {}) {}
   }
 
   class Stage extends Node {
@@ -12,9 +14,11 @@ const mock = vi.hoisted(() => {
     scaleValue = 1;
     positionValue = { x: 0, y: 0 };
     draggableValue = true;
+    content = document.createElement("div");
 
-    constructor(public config: Record<string, unknown>) {
-      super();
+    constructor(config: Record<string, unknown>) {
+      super(config);
+      if (config.container instanceof HTMLDivElement) config.container.append(this.content);
     }
 
     on(name: string, handler: (event: unknown) => void): void {
@@ -50,6 +54,22 @@ const mock = vi.hoisted(() => {
       return this.draggableValue;
     }
 
+    width(): number {
+      return Number(this.config.width);
+    }
+
+    height(): number {
+      return Number(this.config.height);
+    }
+
+    size(value: { width: number; height: number }): void {
+      Object.assign(this.config, value);
+    }
+
+    getContent(): HTMLDivElement {
+      return this.content;
+    }
+
     getPointerPosition(): { x: number; y: number } | null {
       return null;
     }
@@ -69,7 +89,12 @@ vi.mock("konva", () => ({
 
 import { createStageController, fitStageToContent } from "./stage-controller";
 
+let notifyResize: (entries: Array<{ contentRect: { width: number; height: number } }>) => void;
+
 class ResizeObserverMock {
+  constructor(callback: typeof notifyResize) {
+    notifyResize = callback;
+  }
   observe(): void {}
   disconnect(): void {}
 }
@@ -78,7 +103,28 @@ beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverMock);
 });
 
-describe("stage controller touch interaction", () => {
+function createController(width = 800, height = 600) {
+  const container = document.createElement("div");
+  container.getBoundingClientRect = () => ({ width, height, left: 0, top: 0 }) as DOMRect;
+  const onEmptyCanvasClick = vi.fn();
+  const controller = createStageController(container, {
+    isEditing: () => true,
+    getZoomLimits: () => ({ minZoom: 0.5, maxZoom: 3 }),
+    onEmptyCanvasClick,
+  });
+  const stage = controller.stage as unknown as InstanceType<typeof mock.Stage>;
+  return { controller, stage, onEmptyCanvasClick };
+}
+
+function touch(stage: InstanceType<typeof mock.Stage>, name: string, touches: number[]) {
+  const event = Object.assign(new Event(name, { bubbles: true, cancelable: true }), {
+    touches: touches.map((clientX) => ({ clientX, clientY: 100 })),
+  });
+  stage.content.dispatchEvent(event);
+  return event;
+}
+
+describe("stage controller", () => {
   it("clamps initial fitting to plan limits and ignores zero-sized content", () => {
     const stage = new mock.Stage({});
     Object.assign(stage, { width: () => 800, height: () => 600 });
@@ -92,43 +138,54 @@ describe("stage controller touch interaction", () => {
     expect(stage.positionValue).toEqual(position);
   });
 
-  it("pinch-zooms around the gesture center and restores one-finger panning", () => {
-    const container = document.createElement("div");
-    container.getBoundingClientRect = () =>
-      ({ width: 800, height: 600, left: 0, top: 0 }) as DOMRect;
-    const controller = createStageController(container, {
-      isEditing: () => false,
-      getZoomLimits: () => ({ minZoom: 0.5, maxZoom: 3 }),
-      onEmptyCanvasClick: vi.fn(),
-    });
-    const stage = controller.stage as unknown as InstanceType<typeof mock.Stage>;
-    const preventDefault = vi.fn();
-
-    stage.emit("touchmove", {
-      evt: {
-        preventDefault,
-        touches: [
-          { clientX: 100, clientY: 100 },
-          { clientX: 200, clientY: 100 },
-        ],
-      },
-    });
-    stage.emit("touchmove", {
-      evt: {
-        preventDefault,
-        touches: [
-          { clientX: 50, clientY: 100 },
-          { clientX: 250, clientY: 100 },
-        ],
-      },
-    });
-
-    expect(preventDefault).toHaveBeenCalled();
-    expect(stage.scaleValue).toBe(2);
-    expect(stage.positionValue).toEqual({ x: -150, y: -100 });
-    expect(stage.draggableValue).toBe(false);
-
-    stage.emit("touchend", { evt: { touches: [] } });
-    expect(stage.draggableValue).toBe(true);
+  it("makes background images and placeholders transparent to canvas hit testing", () => {
+    const { controller, stage, onEmptyCanvasClick } = createController();
+    expect(
+      (controller.backgroundLayer as unknown as InstanceType<typeof mock.Node>).config
+    ).toEqual({ listening: false });
+    stage.emit("click tap", { target: stage, evt: new Event("click") });
+    expect(onEmptyCanvasClick).toHaveBeenCalledOnce();
   });
+
+  it("sizes a narrow canvas correctly on first fit and keeps its world center on resize", () => {
+    const { stage } = createController(300, 240);
+    fitStageToContent(stage as never, 600, 480);
+    expect(stage.scaleValue).toBeCloseTo(0.45);
+    expect(stage.positionValue).toEqual({ x: 15, y: 12 });
+
+    notifyResize([{ contentRect: { width: 700, height: 400 } }]);
+    expect(stage.width()).toBe(700);
+    expect(stage.height()).toBe(400);
+    expect(stage.positionValue).toEqual({ x: 215, y: 92 });
+  });
+
+  it.each(["touchend", "touchcancel"])(
+    "keeps a pinch independent of Konva drag until %s",
+    (end) => {
+      const { controller, stage, onEmptyCanvasClick } = createController();
+      const konvaTouchmove = vi.fn();
+      stage.content.addEventListener("touchmove", konvaTouchmove);
+      touch(stage, "touchmove", [100]);
+      expect(konvaTouchmove).toHaveBeenCalledOnce();
+
+      touch(stage, "touchstart", [100, 200]);
+      expect(touch(stage, "touchmove", [50, 250]).defaultPrevented).toBe(true);
+      expect(konvaTouchmove).toHaveBeenCalledOnce();
+      expect(stage.scaleValue).toBe(2);
+      expect(stage.positionValue).toEqual({ x: -150, y: -100 });
+      expect(stage.draggableValue).toBe(false);
+
+      const pinchRelease = touch(stage, end, []);
+      expect(pinchRelease.defaultPrevented).toBe(true);
+      stage.emit("click tap", { target: stage, evt: pinchRelease });
+      expect(onEmptyCanvasClick).not.toHaveBeenCalled();
+      expect(stage.draggableValue).toBe(true);
+      const nextTap = touch(stage, "touchend", []);
+      stage.emit("click tap", { target: stage, evt: nextTap });
+      expect(onEmptyCanvasClick).toHaveBeenCalledOnce();
+
+      controller.destroy();
+      expect(touch(stage, "touchstart", [100, 200]).defaultPrevented).toBe(false);
+    }
+  );
 });

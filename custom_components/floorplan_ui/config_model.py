@@ -559,8 +559,8 @@ class ConfigModel:
             normalized_areas: list[dict[str, Any]] = []
             for area in areas:
                 normalized_area = dict(area)
-                normalized_area.setdefault("area_id", "")
-                normalized_area.setdefault("tags", [])
+                normalized_area["area_id"] = area.get("area_id") or ""
+                normalized_area["tags"] = area.get("tags") or []
                 style = normalized_area.get("style")
                 if not isinstance(style, dict):
                     style = {}

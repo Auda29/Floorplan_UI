@@ -35,6 +35,7 @@ export interface FloorplanEditorModel {
 
 export interface FloorplanEditorActions {
   uploadImage(): void;
+  replaceImage(): void;
   undo(): void;
   redo(): void;
   renamePlan(): void;
@@ -65,6 +66,7 @@ export interface FloorplanEditorActions {
   updateMarkerTags(event: Event): void;
   updateMarkerArea(event: Event): void;
   updateMarkerLabelMode(event: Event): void;
+  updateMarkerAction(event: Event): void;
   updateMarkerBinding(slot: OverlaySlot, field: MarkerBindingField, event: Event): void;
   addMarkerSecondaryBinding(): void;
   removeMarkerSecondaryBinding(): void;
@@ -83,6 +85,12 @@ export function renderFloorplanEditor(
         <span>${t("editor.title")}</span>
         <strong>${currentPlan?.name ?? t("panel.selectPlan")}</strong>
       </header>
+
+      ${selectedArea ? renderAreaEditor(selectedArea, model.areas, actions, t) : ""}
+      ${selectedMarker ? renderMarkerEditor(selectedMarker, model.areas, actions, t) : ""}
+      ${!selectedArea && !selectedMarker && currentPlan
+        ? html`<p class="editor-selection-hint">${t("editor.selectHint")}</p>`
+        : ""}
 
       <section class="editor-card">
         <h2>${t("editor.quickActions")}</h2>
@@ -103,9 +111,6 @@ export function renderFloorplanEditor(
         </div>
       </section>
 
-      ${selectedArea ? renderAreaEditor(selectedArea, model.areas, actions, t) : ""}
-      ${selectedMarker ? renderMarkerEditor(selectedMarker, model.areas, actions, t) : ""}
-
       <section class="editor-card editor-entities">
         <h2>${t("editor.entities")}</h2>
         <div class="editor-fields">
@@ -120,31 +125,36 @@ export function renderFloorplanEditor(
               placeholder="light.kitchen"
             />
           </label>
-          <label>
-            ${t("editor.domain")}
-            <select
-              .value=${model.entityDomainFilter}
-              @change=${(event: Event) =>
-                actions.setEntityDomainFilter((event.target as HTMLSelectElement).value)}
-            >
-              <option value="">${t("editor.allDomains")}</option>
-              ${model.entityDomains.map(
-                (domain) => html`<option value=${domain}>${domain}</option>`
-              )}
-            </select>
-          </label>
-          <label>
-            ${t("editor.haArea")}
-            <select
-              .value=${model.entityAreaFilter}
-              @change=${(event: Event) =>
-                actions.setEntityAreaFilter((event.target as HTMLSelectElement).value)}
-            >
-              <option value="">${t("editor.allAreas")}</option>
-              ${model.areas.map((area) => html`<option value=${area.id}>${area.name}</option>`)}
-            </select>
-          </label>
         </div>
+        <details class="entity-filters">
+          <summary>${t("editor.filters")}</summary>
+          <div class="editor-fields">
+            <label>
+              ${t("editor.domain")}
+              <select
+                .value=${model.entityDomainFilter}
+                @change=${(event: Event) =>
+                  actions.setEntityDomainFilter((event.target as HTMLSelectElement).value)}
+              >
+                <option value="">${t("editor.allDomains")}</option>
+                ${model.entityDomains.map(
+                  (domain) => html`<option value=${domain}>${domain}</option>`
+                )}
+              </select>
+            </label>
+            <label>
+              ${t("editor.haArea")}
+              <select
+                .value=${model.entityAreaFilter}
+                @change=${(event: Event) =>
+                  actions.setEntityAreaFilter((event.target as HTMLSelectElement).value)}
+              >
+                <option value="">${t("editor.allAreas")}</option>
+                ${model.areas.map((area) => html`<option value=${area.id}>${area.name}</option>`)}
+              </select>
+            </label>
+          </div>
+        </details>
         <div class="editor-add-row">
           <select
             aria-label=${t("editor.selectEntity", { count: model.entityCount })}
@@ -194,6 +204,9 @@ export function renderFloorplanEditor(
         <div class="editor-card-body editor-actions">
           <button type="button" ?disabled=${!currentPlan} @click=${actions.renamePlan}>
             ${t("editor.renamePlan")}
+          </button>
+          <button type="button" ?disabled=${!currentPlan} @click=${actions.replaceImage}>
+            ${t("editor.replaceImage")}
           </button>
           <button type="button" ?disabled=${!currentPlan} @click=${actions.deletePlan}>
             ${t("editor.deletePlan")}
@@ -452,6 +465,14 @@ function renderMarkerEditor(
             <option value="short">${t("editor.short")}</option>
             <option value="full">${t("editor.full")}</option>
             <option value="off">${t("editor.off")}</option>
+          </select>
+        </label>
+        <label>
+          ${t("editor.markerAction")}
+          <select .value=${marker.action?.tap ?? "more-info"} @change=${actions.updateMarkerAction}>
+            <option value="more-info">${t("editor.actionDetails")}</option>
+            <option value="toggle">${t("editor.actionToggle")}</option>
+            <option value="none">${t("editor.actionNone")}</option>
           </select>
         </label>
         <label>

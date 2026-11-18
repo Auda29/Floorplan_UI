@@ -23,8 +23,8 @@ function cloneConfig(config: FloorplanConfig): FloorplanConfig {
 
 function configForPersistence(config: FloorplanConfig): FloorplanConfig {
   const persisted = cloneConfig(config);
-  for (const plan of persisted.plans) {
-    if (plan.background.asset_id) {
+  for (const plan of Array.isArray(persisted.plans) ? persisted.plans : []) {
+    if (plan?.background?.asset_id) {
       delete plan.background.url;
     }
   }
@@ -54,11 +54,24 @@ export async function validateFloorplanConfig(
   hass: HomeAssistant,
   config: FloorplanConfig
 ): Promise<FloorplanConfig> {
-  const result = await hass.callWS<{ config: FloorplanConfig }>({
-    type: "floorplan_ui/validate_config",
-    config: configForPersistence(config),
-  });
-  return result.config;
+  try {
+    const result = await hass.callWS<{ config: FloorplanConfig }>({
+      type: "floorplan_ui/validate_config",
+      config: configForPersistence(config),
+    });
+    return result.config;
+  } catch (error) {
+    // Home Assistant can reject WebSocket calls with a plain error object.
+    if (
+      error &&
+      typeof error === "object" &&
+      "message" in error &&
+      typeof error.message === "string"
+    ) {
+      throw error instanceof Error ? error : Object.assign(new Error(error.message), error);
+    }
+    throw error;
+  }
 }
 
 export async function loadRegistry(hass: HomeAssistant): Promise<RegistryResult> {
