@@ -19,7 +19,7 @@ import type {
   ValueSpec,
   View,
 } from "../types/home-assistant";
-import { defaultTagsForEntity } from "../lib/marker-utils";
+import { defaultTagsForEntity, markerMatchesView } from "../lib/marker-utils";
 import { createLocalizer } from "../lib/i18n";
 import {
   errorCode,
@@ -62,6 +62,7 @@ import {
   type AreaGeometryUpdate,
 } from "../lib/area-config";
 import {
+  areaMatchesView,
   drawImageErrorState,
   refreshMarkerLiveValues,
   renderAreas,
@@ -69,7 +70,7 @@ import {
   syncCanvasInteractivity,
 } from "../lib/konva-renderer";
 import { floorplanPanelStyles } from "./floorplan-panel.styles";
-import { renderFloorplanEditor } from "./floorplan-editor";
+import { type EditorTab, renderFloorplanEditor } from "./floorplan-editor";
 import { type PanelDialog, type PanelDialogResult } from "./floorplan-dialog";
 import "./floorplan-dialog";
 
@@ -107,6 +108,10 @@ export class FloorplanPanel extends LitElement {
   @state() private _selectedMarkerId: string | null = null;
   @state() private _haAreas: HassArea[] = [];
   @state() private _haEntities: HassEntityRegistry[] = [];
+  @state() private _entityLimit = 100;
+  @state() private _tab: EditorTab = "entities";
+  @state() private _shape: "rect" | "polygon" | null = null;
+  private _skipEntityClick = false;
   @state() private _entityToAdd = "";
   @state() private _entitySearch = "";
   @state() private _entityDomainFilter = "";
@@ -281,7 +286,9 @@ export class FloorplanPanel extends LitElement {
       this._initializeStage();
     }
 
-    if (changedProps.has("_currentPlanId") && this._stage) {
+    if (changedProps.has("_currentPlanId")) {
+      this._shape = null;
+      this._entityToAdd = "";
       this._selectedAreaId = null;
       this._selectedMarkerId = null;
       this._renderFloorplan();
@@ -517,8 +524,22 @@ export class FloorplanPanel extends LitElement {
     if (plan) this._fitToScreen(plan.background.width, plan.background.height);
   }
 
+  private _zoomBy(factor: number) {
+    const stage = this._stage;
+    const plan = this._getCurrentPlan();
+    if (!stage || !plan) return;
+    const center = getVisibleStageCenter(stage);
+    const scale = Math.min(plan.view.maxZoom, Math.max(plan.view.minZoom, stage.scaleX() * factor));
+    stage.scale({ x: scale, y: scale });
+    stage.position({
+      x: stage.width() / 2 - center.x * scale,
+      y: stage.height() / 2 - center.y * scale,
+    });
+  }
+
   private _toggleEditMode() {
     if (!this._canEdit) return;
+    this._switchTab("entities");
     this._editMode = !this._editMode;
     if (!this._editMode) {
       this._finishEntityPointerDrag();
@@ -534,6 +555,7 @@ export class FloorplanPanel extends LitElement {
     if (!this._config) return;
     const select = e.target as HTMLSelectElement;
     const planId = select.value || null;
+    this._switchTab("entities");
     this._currentPlanId = planId;
   }
 
@@ -610,29 +632,55 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _onAreaSelected(areaId: string) {
+    this._switchTab("inspector");
     this._selectedAreaId = areaId;
     this._selectedMarkerId = null;
     this._renderAreas(this._getCurrentPlan());
     this._syncCanvasInteractivity();
   }
 
-  private _addAreaRect() {
-    this._addAreaShape("rect");
+  private _switchTab(tab: EditorTab) {
+    this._shape = null;
+    this._entityToAdd = "";
+    this._tab = tab;
   }
 
-  private _addAreaPolygon() {
-    this._addAreaShape("polygon");
+  private _armPlacement(shape: "rect" | "polygon" | null, entity = "") {
+    this._shape = shape;
+    this._entityToAdd = entity;
+    void this.updateComplete.then(() =>
+      this.renderRoot
+        .querySelector<HTMLButtonElement>(".placement-surface")
+        ?.focus({ preventScroll: true })
+    );
   }
 
-  private _addAreaShape(type: "rect" | "polygon") {
+  private _place(event: MouseEvent) {
+    if (!this._editMode || !this._canEdit) return;
+    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    const point =
+      event.detail && this._stage
+        ? this._stage
+            .getAbsoluteTransform()
+            .copy()
+            .invert()
+            .point({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+        : this._getVisibleCanvasCenter();
+    if (this._shape) this._addAreaShape(this._shape, point);
+    else if (this._entityToAdd) this._addMarkerAt(this._entityToAdd, point);
+    this._canvasContainer()?.focus({ preventScroll: true });
+  }
+
+  private _addAreaShape(type: "rect" | "polygon", point: { x: number; y: number }) {
     if (!this._canEdit || !this._config) return;
     const plan = this._getCurrentPlan();
     if (!plan) return;
 
     const id = this._newId("area");
-    const newArea = createArea(id, type, this._getVisibleCanvasCenter());
+    const newArea = createArea(id, type, point);
     void this._commitConfig(addArea(this._config, plan.plan_id, newArea));
 
+    this._switchTab("inspector");
     this._selectedAreaId = id;
     this._selectedMarkerId = null;
     this._renderAreas(this._getCurrentPlan());
@@ -777,11 +825,6 @@ export class FloorplanPanel extends LitElement {
     );
   }
 
-  private _addMarker() {
-    if (!this._canEdit || !this._config || !this._entityToAdd.trim()) return;
-    this._addMarkerAt(this._entityToAdd.trim(), this._getVisibleCanvasCenter());
-  }
-
   private _addMarkerAt(entityId: string, position: { x: number; y: number }) {
     if (!this._canEdit || !this._config) return;
     const plan = this._getCurrentPlan();
@@ -847,6 +890,7 @@ export class FloorplanPanel extends LitElement {
       return;
     }
     this._finishEntityPointerDrag();
+    this._skipEntityClick = false;
     const target = event.currentTarget as HTMLElement;
     const palette = target.closest<HTMLElement>(".entity-palette");
     this._entityPointerDrag = {
@@ -915,6 +959,7 @@ export class FloorplanPanel extends LitElement {
     if (!drag || drag.pointerId !== event.pointerId) return;
 
     const canvas = this._canvasContainer();
+    this._skipEntityClick = drag.active || drag.scrolling;
     const shouldAdd =
       drag.active && this._clientPointIsInside(canvas, event.clientX, event.clientY);
     this._finishEntityPointerDrag();
@@ -1105,6 +1150,7 @@ export class FloorplanPanel extends LitElement {
 
   private _selectCanvasObject(kind: "area" | "marker", id: string): void {
     if (!this._canEdit || !this._editMode) return;
+    this._switchTab("inspector");
     this._selectedAreaId = kind === "area" ? id : null;
     this._selectedMarkerId = kind === "marker" ? id : null;
     this._renderAreas(this._getCurrentPlan());
@@ -1114,6 +1160,11 @@ export class FloorplanPanel extends LitElement {
 
   private _onCanvasKeydown(event: KeyboardEvent): void {
     if (!this._canEdit || !this._editMode) return;
+    if (event.key === "Escape") {
+      this._switchTab(this._tab);
+      this._canvasContainer()?.focus();
+      return;
+    }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
       event.preventDefault();
       if (event.shiftKey) this._redo();
@@ -1135,6 +1186,9 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _setView(viewId: string) {
+    this._switchTab(this._tab);
+    this._selectedAreaId = null;
+    this._selectedMarkerId = null;
     this._currentView = viewId;
   }
 
@@ -1447,6 +1501,7 @@ export class FloorplanPanel extends LitElement {
 
     const planId = this._newId("plan");
     void this._commitConfig(addPlan(this._config, createPlan(planId, name, background)));
+    this._switchTab("entities");
     this._currentPlanId = planId;
     this._renderFloorplan();
   }
@@ -1477,19 +1532,15 @@ export class FloorplanPanel extends LitElement {
   ) {
     const entitySearch = this._entitySearch.trim().toLowerCase();
     const entityDomains = [...new Set(this._haEntities.map((entity) => entity.domain))].sort();
-    const entityOptions = this._haEntities
-      .filter((entity) => {
-        const matchesSearch =
-          !entitySearch ||
-          entity.entity_id.toLowerCase().includes(entitySearch) ||
-          Boolean(entity.name?.toLowerCase().includes(entitySearch));
-        const matchesDomain =
-          !this._entityDomainFilter || entity.domain === this._entityDomainFilter;
-        const matchesArea = !this._entityAreaFilter || entity.area_id === this._entityAreaFilter;
-        return matchesSearch && matchesDomain && matchesArea;
-      })
-      .slice(0, 250);
-
+    const entityOptions = this._haEntities.filter((entity) => {
+      const matchesSearch =
+        !entitySearch ||
+        entity.entity_id.toLowerCase().includes(entitySearch) ||
+        Boolean(entity.name?.toLowerCase().includes(entitySearch));
+      const matchesDomain = !this._entityDomainFilter || entity.domain === this._entityDomainFilter;
+      const matchesArea = !this._entityAreaFilter || entity.area_id === this._entityAreaFilter;
+      return matchesSearch && matchesDomain && matchesArea;
+    });
     return renderFloorplanEditor(
       {
         currentPlan,
@@ -1498,8 +1549,10 @@ export class FloorplanPanel extends LitElement {
         selectedArea,
         selectedMarker,
         areas: this._haAreas,
+        tab: this._tab,
+        matchCount: entityOptions.length,
         entityCount: this._haEntities.length,
-        entityOptions,
+        entityOptions: entityOptions.slice(0, this._entityLimit),
         entityDomains,
         entitySearch: this._entitySearch,
         entityDomainFilter: this._entityDomainFilter,
@@ -1515,8 +1568,9 @@ export class FloorplanPanel extends LitElement {
         redo: () => this._redo(),
         renamePlan: () => this._renameCurrentPlan(),
         deletePlan: () => this._deleteCurrentPlan(),
-        addAreaRect: () => this._addAreaRect(),
-        addAreaPolygon: () => this._addAreaPolygon(),
+        showMore: () => {
+          this._entityLimit += 100;
+        },
         addView: () => this._addView(),
         renameView: () => this._renameCurrentView(),
         moveView: (direction) => this._moveCurrentView(direction),
@@ -1525,18 +1579,22 @@ export class FloorplanPanel extends LitElement {
         exportConfig: () => this._exportConfig(),
         importConfig: () => this._triggerConfigImport(),
         setEntitySearch: (value) => {
+          this._entityLimit = 100;
           this._entitySearch = value;
         },
         setEntityDomainFilter: (value) => {
+          this._entityLimit = 100;
           this._entityDomainFilter = value;
         },
         setEntityAreaFilter: (value) => {
+          this._entityLimit = 100;
           this._entityAreaFilter = value;
         },
-        setEntityToAdd: (value) => {
-          this._entityToAdd = value;
+        setEntityToAdd: (value, event) => {
+          if (!this._skipEntityClick || !event.detail) this._armPlacement(null, value);
+          this._skipEntityClick = false;
         },
-        addMarker: () => this._addMarker(),
+        switchTab: (tab) => this._switchTab(tab),
         startEntityDrag: (entityId, event) => this._onEntityDragStart(entityId, event),
         startEntityPointerDrag: (entityId, event) => this._onEntityPointerDown(entityId, event),
         updateViewFilter: (filterName, event) => this._updateViewFilter(filterName, event),
@@ -1573,8 +1631,26 @@ export class FloorplanPanel extends LitElement {
     const currentView = this._getCurrentView();
     const selectedArea = this._getSelectedArea();
     const selectedMarker = this._getSelectedMarker();
+    const visibleAreas =
+      currentPlan?.areas.filter((area) => this._editMode || areaMatchesView(area, currentView)) ??
+      [];
+    const visibleMarkers =
+      currentPlan?.markers.filter(
+        (marker) => this._editMode || markerMatchesView(marker, currentView)
+      ) ?? [];
+    const placementEntity = this._entityToAdd
+      ? this._haEntities.find((entity) => entity.entity_id === this._entityToAdd)
+      : undefined;
 
     const t = this._t;
+    const saveMessage =
+      this._saveState === "pending"
+        ? t("panel.pending")
+        : this._saveState === "saving"
+          ? t("panel.saving")
+          : this._notice === t("panel.changesSaved")
+            ? this._notice
+            : "";
     return html`
       <div class="container ${this.narrow ? "narrow" : ""}">
         <div class="toolbar">
@@ -1582,7 +1658,15 @@ export class FloorplanPanel extends LitElement {
             ${this.narrow
               ? html`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>`
               : ""}
-            <h1>${t("panel.title")}</h1>
+            <div class="workspace-title">
+              <h1>${t("panel.title")}</h1>
+              <span
+                class="save-indicator ${saveMessage ? "status" : ""}"
+                role="status"
+                aria-live="polite"
+                >${saveMessage}</span
+              >
+            </div>
             ${currentPlan
               ? html`<label class="plan-select">
                   <span>${t("panel.plan")}</span>
@@ -1664,19 +1748,45 @@ export class FloorplanPanel extends LitElement {
             ${this._loading
               ? html`<div class="loading" role="status">${t("panel.loading")}</div>`
               : html`<div class="canvas-wrapper"></div>`}
+            ${this._editMode && currentPlan && (this._shape || this._entityToAdd)
+              ? html` <button
+                    class="placement-surface"
+                    aria-label=${t("editor.placeHint")}
+                    @click=${this._place}
+                  ></button>
+                  <div class="placement-prompt">
+                    <div>
+                      <strong
+                        >${placementEntity?.name ||
+                        this._entityToAdd ||
+                        t(this._shape === "rect" ? "editor.rectangle" : "editor.polygon")}</strong
+                      ><span>${t("editor.placeHint")}</span>
+                    </div>
+                    <button @click=${() => this._switchTab(this._tab)}>
+                      ${t("dialog.cancel")}
+                    </button>
+                  </div>`
+              : ""}
+            ${this._editMode && currentPlan && !this._entityToAdd && !this._shape
+              ? html`<div class="map-tools" role="group" aria-label=${t("editor.quickActions")}>
+                  <button
+                    type="button"
+                    aria-pressed="true"
+                    @click=${() => this._switchTab("inspector")}
+                  >
+                    ${t("editor.selectTool")}
+                  </button>
+                  <button type="button" @click=${() => this._armPlacement("rect")}>
+                    ${t("editor.rectangle")}
+                  </button>
+                  <button type="button" @click=${() => this._armPlacement("polygon")}>
+                    ${t("editor.polygon")}
+                  </button>
+                </div>`
+              : ""}
             <div class="panel-feedback">
-              ${this._saveState === "pending"
-                ? html`<div class="status" role="status" aria-live="polite">
-                    ${t("panel.pending")}
-                  </div>`
-                : ""}
-              ${this._saveState === "saving"
-                ? html`<div class="status" role="status" aria-live="polite">
-                    ${t("panel.saving")}
-                  </div>`
-                : ""}
-              ${this._notice
-                ? html`<div class="status" role="status" aria-live="polite">${this._notice}</div>`
+              ${this._notice && this._notice !== t("panel.changesSaved")
+                ? html`<div class="status" role="status">${this._notice}</div>`
                 : ""}
               ${this._error
                 ? html`
@@ -1702,9 +1812,38 @@ export class FloorplanPanel extends LitElement {
                 : ""}
             </div>
             ${currentPlan && !this._loading
-              ? html`<button class="canvas-fit" type="button" @click=${this._fitCurrentPlan}>
-                  ${t("panel.fit")}
-                </button>`
+              ? html`<div class="map-dock">
+                  <div class="map-caption">
+                    <strong>${this._editMode ? t("panel.editContents") : currentView?.name}</strong>
+                    <span
+                      >${t("panel.mapContents", {
+                        areas: visibleAreas.length,
+                        markers: visibleMarkers.length,
+                      })}</span
+                    >
+                  </div>
+                  <div class="map-zoom" role="group" aria-label=${t("panel.canvas")}>
+                    <button
+                      type="button"
+                      aria-label=${t("panel.zoomOut")}
+                      title=${t("panel.zoomOut")}
+                      @click=${() => this._zoomBy(0.8)}
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      aria-label=${t("panel.zoomIn")}
+                      title=${t("panel.zoomIn")}
+                      @click=${() => this._zoomBy(1.25)}
+                    >
+                      +
+                    </button>
+                    <button class="canvas-fit" type="button" @click=${this._fitCurrentPlan}>
+                      ${t("panel.fit")}
+                    </button>
+                  </div>
+                </div>`
               : ""}
             ${!this._loading && !this._loadFailed && !currentPlan
               ? html`<div class="empty-state">
@@ -1730,7 +1869,7 @@ export class FloorplanPanel extends LitElement {
               : ""}
             <section class="canvas-accessibility" aria-label=${t("panel.objects")}>
               <ul>
-                ${currentPlan?.areas.map(
+                ${visibleAreas.map(
                   (area) => html`
                     <li>
                       ${this._editMode
@@ -1745,7 +1884,7 @@ export class FloorplanPanel extends LitElement {
                     </li>
                   `
                 )}
-                ${currentPlan?.markers.map(
+                ${visibleMarkers.map(
                   (marker) => html`
                     <li>
                       <button

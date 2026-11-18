@@ -326,21 +326,21 @@ describe("floorplan panel", () => {
     button(panel, "Edit").click();
     await panel.updateComplete;
     const savesBeforeArea = mocks.saveFloorplanConfig.mock.calls.length;
-    button(panel, "+ Add rectangle").click();
+    button(panel, "Rectangle").click();
+    await panel.updateComplete;
+    expect(mocks.saveFloorplanConfig.mock.calls.length).toBe(savesBeforeArea);
+    panel.shadowRoot!.querySelector<HTMLButtonElement>(".placement-surface")!.click();
     await vi.waitFor(() => {
       expect(mocks.saveFloorplanConfig.mock.calls.length).toBeGreaterThan(savesBeforeArea);
       const saved = mocks.saveFloorplanConfig.mock.calls.at(-1)?.[1] as FloorplanConfig;
       expect(saved.plans[0].areas).toHaveLength(1);
     });
 
-    const entitySelect = Array.from(panel.shadowRoot!.querySelectorAll("select")).find((select) =>
-      Array.from(select.options).some((option) => option.value === "light.kitchen")
-    );
-    if (!entitySelect) throw new Error("Entity select not found");
-    entitySelect.value = "light.kitchen";
-    entitySelect.dispatchEvent(new Event("change"));
+    button(panel, "Library").click();
     await panel.updateComplete;
-    button(panel, "+ Add marker").click();
+    panel.shadowRoot!.querySelector<HTMLButtonElement>(".entity-card")!.click();
+    await panel.updateComplete;
+    panel.shadowRoot!.querySelector<HTMLButtonElement>(".placement-surface")!.click();
     await vi.waitFor(() => {
       const saved = mocks.saveFloorplanConfig.mock.calls.at(-1)?.[1] as FloorplanConfig;
       expect(saved.plans[0].markers).toHaveLength(1);

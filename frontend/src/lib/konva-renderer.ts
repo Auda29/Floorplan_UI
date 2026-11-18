@@ -75,7 +75,7 @@ export function renderAreas(options: AreaRenderOptions): void {
   if (!plan) return;
 
   for (const area of plan.areas ?? []) {
-    if (!areaMatchesView(area, options.view)) continue;
+    if (!options.editMode && !areaMatchesView(area, options.view)) continue;
 
     const areaShape = createAreaShape(area, options.editMode);
     if (!areaShape) continue;
@@ -106,7 +106,7 @@ export function renderAreas(options: AreaRenderOptions): void {
   }
 }
 
-function areaMatchesView(area: AreaShape, view: View | undefined): boolean {
+export function areaMatchesView(area: AreaShape, view: View | undefined): boolean {
   const areaFilter = view?.filters?.area_ids;
   if (areaFilter?.length && (!area.area_id || !areaFilter.includes(area.area_id))) {
     return false;
@@ -286,11 +286,17 @@ export function renderMarkers(options: MarkerRenderOptions): void {
   const { layer, plan, groups } = options;
   layer.destroyChildren();
   groups.clear();
+  options.stage?.off("scaleXChange.markerSize");
   if (!plan) return;
+  const syncSize = () => {
+    const scale = 1 / (options.stage?.scaleX() || 1);
+    for (const group of groups.values()) group.scale({ x: scale, y: scale });
+  };
+  options.stage?.on("scaleXChange.markerSize", syncSize);
 
   const registryByEntity = new Map(options.entities.map((entity) => [entity.entity_id, entity]));
   for (const marker of plan.markers ?? []) {
-    if (!markerMatchesView(marker, options.view)) continue;
+    if (!options.editMode && !markerMatchesView(marker, options.view)) continue;
 
     const state = options.states[marker.entity_id];
     const registryEntry = registryByEntity.get(marker.entity_id);
@@ -318,6 +324,7 @@ export function renderMarkers(options: MarkerRenderOptions): void {
     layer.add(group);
     groups.set(marker.id, group);
   }
+  syncSize();
   layer.batchDraw();
 }
 
@@ -335,7 +342,7 @@ function createMarkerGroup(
   group.add(
     new Konva.Circle({
       name: "marker-dot",
-      radius: 19,
+      radius: 13,
       fill: getMarkerColor(state),
       stroke: "#ffffff",
       strokeWidth: options.selectedMarkerId === marker.id ? 4 : 2,
@@ -345,21 +352,31 @@ function createMarkerGroup(
     }),
     new Konva.Text({
       x: -10,
-      y: -10,
+      y: -7,
       width: 20,
       align: "center",
       text: getDomainGlyph(marker.entity_id),
       fill: "#ffffff",
-      fontSize: 16,
+      fontSize: 14,
       fontStyle: "bold",
+      listening: false,
+    }),
+    new Konva.Rect({
+      name: "marker-plate",
+      x: 17,
+      y: -18,
+      fill: "#202a30",
+      cornerRadius: 5,
+      stroke: "#fff",
+      strokeWidth: 1,
       listening: false,
     }),
     new Konva.Text({
       name: "marker-label",
-      x: 26,
+      x: 21,
       y: -17,
       text: marker.label_mode === "off" ? "" : getMarkerLabel(marker, state, registryEntry),
-      fill: "#212121",
+      fill: "#ffffff",
       fontSize: 13,
       fontStyle: "bold",
       padding: 2,
@@ -367,16 +384,31 @@ function createMarkerGroup(
     }),
     new Konva.Text({
       name: "marker-value",
-      x: 26,
+      x: 21,
       y: 1,
       text: markerValues(marker, state, options.view, options.states),
-      fill: "#424242",
+      fill: "#e0e8ed",
       fontSize: 12,
       padding: 2,
       listening: false,
     })
   );
+  sizeMarkerPlate(group);
   return group;
+}
+
+function sizeMarkerPlate(group: Konva.Group) {
+  const plate = group.findOne<Konva.Rect>(".marker-plate")!;
+  const label = group.findOne<Konva.Text>(".marker-label")!;
+  const value = group.findOne<Konva.Text>(".marker-value")!;
+  const hasLabel = Boolean(label.text());
+  const top = hasLabel ? -18 : -value.height() / 2 - 2;
+  plate.y(top);
+  value.y(hasLabel ? 0 : top + 2);
+  plate.size({
+    width: Math.max(hasLabel ? label.width() : 0, value.width()) + 8,
+    height: value.y() - top + value.height() + 3,
+  });
 }
 
 export function refreshMarkerLiveValues(options: MarkerRefreshOptions): void {
@@ -396,6 +428,7 @@ export function refreshMarkerLiveValues(options: MarkerRefreshOptions): void {
         ? ""
         : getMarkerLabel(marker, state, registryByEntity.get(marker.entity_id))
     );
+    sizeMarkerPlate(group);
   }
   options.layer.batchDraw();
 }

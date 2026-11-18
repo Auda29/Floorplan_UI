@@ -42,7 +42,10 @@ async function mount(page: Page): Promise<void> {
   });
   await page.addScriptTag({
     content: await readFile(
-      resolve(process.cwd(), "../custom_components/floorplan_ui/frontend/floorplan-ui.js"),
+      resolve(
+        process.env.FLOORPLAN_TEST_BUNDLE ??
+          "../custom_components/floorplan_ui/frontend/floorplan-ui.js"
+      ),
       "utf8"
     ),
     type: "module",
@@ -57,7 +60,10 @@ async function mount(page: Page): Promise<void> {
         version: 3,
         revision: 1,
         default_view: "all",
-        views: [{ id: "all", name: "All", filters: {} }],
+        views: [
+          { id: "all", name: "All", filters: {} },
+          { id: "security", name: "Security", filters: { domains: ["binary_sensor"] } },
+        ],
         plans: [
           {
             plan_id: "ground",
@@ -101,7 +107,19 @@ async function mount(page: Page): Promise<void> {
           case "floorplan_ui/get_config":
             return structuredClone(harness.config);
           case "floorplan_ui/list_registry":
-            return { areas: [], entities: [] };
+            return {
+              areas: [],
+              entities: [
+                {
+                  entity_id: "light.kitchen",
+                  name: "Kitchen lamp",
+                  domain: "light",
+                  area_id: null,
+                  device_id: null,
+                  icon: null,
+                },
+              ],
+            };
           case "floorplan_ui/validate_config":
             return { config: structuredClone(message.config) };
           case "floorplan_ui/save_config": {
@@ -189,6 +207,48 @@ test("existing markers support touch, edit-mode selection, and persisted draggin
   await expect.poll(() => page.evaluate(() => window.regressionHarness.moreInfo)).toBe(2);
 });
 
+test("tapping the plan places a searched entity at its transformed map position", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const panel = page.locator("floorplan-ui-panel");
+  const markerCount = () => panel.evaluate((element) => (element as Panel)._markerGroups.size);
+  await panel.getByRole("button", { name: "Security", exact: true }).click();
+  await expect.poll(markerCount).toBe(0);
+  await panel.getByRole("button", { name: "Edit", exact: true }).click();
+  await expect.poll(markerCount).toBe(1);
+  await panel.getByRole("searchbox").fill("Kitchen lamp");
+  await panel.locator(".entity-card").tap();
+  const surface = panel.locator(".placement-surface");
+  await surface.press("Escape");
+  await expect(surface).toHaveCount(0);
+  await panel.locator(".entity-card").tap();
+  await waitForStageSize(page);
+  await panel.evaluate((element) => {
+    const stage = (element as Panel)._stage;
+    stage.scale({ x: 0.5, y: 0.5 });
+    stage.position({ x: 20, y: 10 });
+  });
+  await surface.tap({ position: { x: 110, y: 95 } });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.regressionHarness.config.plans[0].markers.map((m) => m.pos))
+    )
+    .toEqual([
+      { x: 300, y: 250 },
+      { x: 180, y: 170 },
+    ]);
+  await expect(panel.locator(".editor-selection-name")).toHaveText("light.kitchen");
+  await expect(panel.getByRole("button", { name: "Inspector", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page"
+  );
+  await expect.poll(markerCount).toBe(2);
+  await panel.getByRole("button", { name: "Done", exact: true }).click();
+  await expect.poll(markerCount).toBe(0);
+});
+
 test("adding an area preserves pan and zoom and supports touch selection", async ({ page }) => {
   await mount(page);
   const panel = page.locator("floorplan-ui-panel");
@@ -199,7 +259,8 @@ test("adding an area preserves pan and zoom and supports touch selection", async
     stage.scale({ x: 0.7, y: 0.7 });
     stage.position({ x: 123, y: 87 });
   });
-  await panel.getByRole("button", { name: "+ Add rectangle", exact: true }).click();
+  await panel.getByRole("button", { name: "Rectangle", exact: true }).click();
+  await panel.locator(".placement-surface").click({ position: { x: 360, y: 260 } });
   await expect
     .poll(() => page.evaluate(() => window.regressionHarness.config.plans[0].areas.length))
     .toBe(1);
@@ -239,7 +300,8 @@ test("conflict reload reconnects the canvas and undo restores the final plan", a
   await page.evaluate(() => {
     window.regressionHarness.conflict = true;
   });
-  await panel.getByRole("button", { name: "+ Add rectangle", exact: true }).click();
+  await panel.getByRole("button", { name: "Rectangle", exact: true }).click();
+  await panel.locator(".placement-surface").click({ position: { x: 360, y: 260 } });
   await panel.getByRole("button", { name: "Reload latest", exact: true }).click();
   await panel.getByRole("button", { name: "Reload", exact: true }).click();
   await expect
@@ -249,6 +311,7 @@ test("conflict reload reconnects the canvas and undo restores the final plan", a
   await page.evaluate(() => {
     window.regressionHarness.conflict = false;
   });
+  await panel.getByRole("button", { name: "Settings", exact: true }).click();
   await panel.locator("details.editor-plan-view > summary").click();
   await panel.getByRole("button", { name: "Delete plan", exact: true }).click();
   await panel.getByRole("dialog").getByRole("button", { name: "Delete plan", exact: true }).click();

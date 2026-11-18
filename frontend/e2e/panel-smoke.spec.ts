@@ -3,8 +3,7 @@ import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 
 const bundlePath = resolve(
-  process.cwd(),
-  "../custom_components/floorplan_ui/frontend/floorplan-ui.js"
+  process.env.FLOORPLAN_TEST_BUNDLE ?? "../custom_components/floorplan_ui/frontend/floorplan-ui.js"
 );
 
 const png = Buffer.from(
@@ -153,8 +152,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   await panel.getByRole("button", { name: "Edit" }).click();
   const editor = panel.locator(".editor-panel");
   await expect(editor).toBeVisible();
-  await expect(editor.locator("details.editor-plan-view")).not.toHaveAttribute("open", "");
-  await expect(editor.locator("details.editor-advanced")).not.toHaveAttribute("open", "");
+  await expect(editor.getByRole("searchbox")).toBeVisible();
   const layout = await panel.evaluate((element) => {
     const root = element.shadowRoot!;
     const editorElement = root.querySelector<HTMLElement>(".editor-panel")!;
@@ -180,7 +178,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   expect(layout.editorWidth).toBeLessThanOrEqual(420);
   expect(layout.canvasTop).toBeCloseTo(layout.editorTop, 0);
   expect(layout.canvasHeight).toBeGreaterThan(700);
-  expect(layout.workspaceBottom).toBeCloseTo(946, 0);
+  expect(layout.workspaceBottom).toBeCloseTo(938, 0);
   expect(layout.stageWidth).toBeCloseTo(layout.canvasWidth, 0);
   expect(layout.stageHeight).toBeCloseTo(layout.canvasHeight, 0);
   expect(layout.editorHasHorizontalOverflow).toBe(false);
@@ -248,6 +246,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   }, draggedEntityId);
   expect(draggedMarkerRendering).toEqual({ exists: true, visible: true, insideCanvas: true });
 
+  await editor.getByRole("button", { name: "Library", exact: true }).click();
   const manuallyDraggedEntityId = "light.editor_test_1";
   const manuallyDraggedEntity = editor
     .getByText(manuallyDraggedEntityId, { exact: true })
@@ -278,6 +277,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   }, manuallyDraggedEntityId);
   await expect(panel.locator(".canvas-accessibility")).toContainText(manuallyDraggedEntityId);
 
+  await editor.getByRole("button", { name: "Library", exact: true }).click();
   const captureFallbackEntityId = "light.editor_test_15";
   const captureFallbackEntity = editor
     .getByText(captureFallbackEntityId, { exact: true })
@@ -318,6 +318,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     )
     .toBe(true);
 
+  await editor.getByRole("button", { name: "Library", exact: true }).click();
   const partialHtmlDragEntityId = "light.editor_test_16";
   const partialHtmlDragEntity = editor
     .getByText(partialHtmlDragEntityId, { exact: true })
@@ -364,6 +365,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     )
     .toBe(1);
 
+  await editor.getByRole("button", { name: "Library", exact: true }).click();
   const secondaryPenEntityId = "light.editor_test_17";
   const secondaryPenEntity = editor.getByText(secondaryPenEntityId, { exact: true }).locator("..");
   await secondaryPenEntity.scrollIntoViewIfNeeded();
@@ -404,6 +406,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   }, secondaryPenEntityId);
   expect(secondaryPenMarkerCount).toBe(0);
 
+  await editor.getByRole("button", { name: "Library", exact: true }).click();
   const touchDraggedEntityId = "light.editor_test_10";
   const touchDraggedEntity = editor.getByText(touchDraggedEntityId, { exact: true }).locator("..");
   await touchDraggedEntity.scrollIntoViewIfNeeded();
@@ -449,6 +452,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   await expect(panel.locator(".canvas-accessibility")).toContainText(touchDraggedEntityId);
   await expect(editor.locator(".editor-selection-name")).toHaveText(touchDraggedEntityId);
 
+  await editor.getByRole("button", { name: "Library", exact: true }).click();
   const cancelledEntityId = "light.editor_test_11";
   const cancelledEntity = editor.getByText(cancelledEntityId, { exact: true }).locator("..");
   await cancelledEntity.scrollIntoViewIfNeeded();
@@ -549,6 +553,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     4.5
   );
 
+  await editor.getByRole("button", { name: "Settings", exact: true }).click();
   const planViewSummary = editor.locator("details.editor-plan-view > summary");
   const advancedSummary = editor.locator("details.editor-advanced > summary");
   await planViewSummary.focus();
@@ -560,7 +565,8 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   await page.keyboard.press("Enter");
   await expect(editor.locator("details.editor-advanced")).toHaveAttribute("open", "");
 
-  await panel.getByRole("button", { name: "+ Add rectangle", exact: true }).click();
+  await panel.getByRole("button", { name: "Rectangle", exact: true }).click();
+  await panel.locator(".placement-surface").click({ position: { x: 360, y: 260 } });
   await page.waitForFunction(() => {
     const state = (
       window as unknown as {
@@ -627,7 +633,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     panel.narrow = true;
   });
   await reloaded.getByRole("button", { name: "Bearbeiten" }).click();
-  await expect(reloaded.getByRole("button", { name: "+ Rechteck hinzufügen" })).toBeVisible();
+  await expect(reloaded.getByRole("button", { name: "Rechteck" })).toBeVisible();
   await expect(
     reloaded.getByRole("button", {
       name: "★ SehrLangeDeutscheAnsichtFürBeleuchtungKlimatisierungBeschattungEnergieHeizungLüftungSicherheitMultimedia",
@@ -678,7 +684,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   expect(narrowLayout.editorHasHorizontalOverflow).toBe(false);
   expect(narrowLayout.buttonHeight).toBeGreaterThanOrEqual(44);
   expect(narrowLayout.minimumTouchTargetHeight).toBeGreaterThanOrEqual(44);
-  expect(narrowLayout.workspaceIsScrollable).toBe(true);
+  expect(narrowLayout.canvasHeight).toBeGreaterThanOrEqual(230);
   expect(narrowLayout.panelHeight).toBeCloseTo(600, 0);
   expect(narrowLayout.documentHasHorizontalOverflow).toBe(false);
   expect(narrowLayout.containerHasHorizontalOverflow).toBe(false);
@@ -759,9 +765,13 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
     return markers?.some((marker) => marker.entity_id === entityId);
   }, narrowTouchEntityId);
 
-  const entitySelect = reloaded.locator(".editor-add-row select");
-  await entitySelect.selectOption("light.editor_test_2");
-  await reloaded.getByRole("button", { name: "+ Marker hinzufügen" }).click();
+  await reloaded.getByRole("button", { name: "Entitäten", exact: true }).click();
+  await reloaded.getByRole("searchbox").fill("light.editor_test_2");
+  await reloaded
+    .locator(".entity-card")
+    .filter({ has: page.getByText("light.editor_test_2", { exact: true }) })
+    .click();
+  await reloaded.locator(".placement-surface").press("Enter");
   await page.waitForFunction(() => {
     const state = (
       window as unknown as {
@@ -776,13 +786,6 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   });
 
   await page.setViewportSize({ width: 600, height: 600 });
-  const narrowScrollTop = await reloaded.evaluate((element) => {
-    const workspaceElement = element.shadowRoot!.querySelector<HTMLElement>(".workspace")!;
-    workspaceElement.scrollTop = workspaceElement.scrollHeight;
-    return workspaceElement.scrollTop;
-  });
-  expect(narrowScrollTop).toBeGreaterThan(0);
-
   await page.setViewportSize({ width: 899, height: 700 });
   await reloaded.evaluate((element) => {
     (element as HTMLElement & { narrow: boolean }).narrow = false;

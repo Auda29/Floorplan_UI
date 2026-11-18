@@ -26,8 +26,17 @@ const { MockNode } = vi.hoisted(() => {
       this.children.length = 0;
     }
     public batchDraw() {}
-    public text(value: string) {
-      this.attrs.text = value;
+    public scale() {}
+    public size(size: { width: number; height: number }) {
+      Object.assign(this.attrs, size);
+    }
+    public y(value?: number) {
+      if (value !== undefined) this.attrs.y = value;
+      return Number(this.attrs.y);
+    }
+    public text(value?: string) {
+      if (value !== undefined) this.attrs.text = value;
+      return this.attrs.text;
     }
     public fill(value: string) {
       this.attrs.fill = value;

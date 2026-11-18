@@ -6,7 +6,7 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto an imported PNG or JPEG floorplan. It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> Current HACS release: `0.2.0`.
+> Current HACS release: `0.3.0`.
 
 ## Current capabilities
 
@@ -15,8 +15,8 @@ sidebar panel with separate view and admin-only edit modes.
 - Pan and zoom the canvas.
 - Add, move, resize, and style rectangular areas; add, move, and vertex-edit
   polygonal areas; bind both to HA Areas and tags.
-- Search and filter the HA entity registry, then add markers by selection or
-  drag-and-drop onto the plan.
+- Search and filter the HA entity registry, then choose an entity and click or tap
+  its position on the plan. Drag-and-drop and keyboard placement are also available.
 - Move, configure, and remove markers, including primary/secondary state or
   attribute bindings and formatting.
 - Display live entity states and activate markers with mouse, touch, or keyboard.
@@ -50,7 +50,7 @@ center remain follow-up work.
 
 1. Add `https://github.com/Auda29/Floorplan_UI` as a custom HACS repository of
    type **Integration**.
-2. Install **Floorplan UI 0.2.0** from HACS and restart Home Assistant.
+2. Install **Floorplan UI 0.3.0** from HACS and restart Home Assistant.
 3. Open **Settings → Devices & services → Add integration** and select
    **Floorplan UI**.
 4. Open **Floorplan** from the sidebar. An administrator can upload the first
@@ -64,13 +64,14 @@ All runtime files, including the compiled panel bundle, live inside
 Minimum supported Home Assistant version: **2025.7.3**. CI additionally checks a
 current Home Assistant/Python combination.
 
-### Updating to 0.2.0
+### Updating to 0.3.0
 
 Update through HACS, restart Home Assistant, and reload the Floorplan panel.
 Existing plans, asset references, and schema-version-3 configurations remain
-compatible. Plan, view, and backup controls are grouped under **Plan and views**
-in the editor. When replacing a plan image, use the same framing if you want
-areas and markers to line up with the original drawing.
+compatible. In the editor, **Library** lists entities, **Inspector** shows the
+selected object, and **Settings** contains plan, view, and backup controls.
+When replacing a plan image, use the same framing if you want areas and markers
+to line up with the original drawing.
 
 Portable JSON backups may now be up to **128 MB**, including embedded images;
 configuration metadata remains limited to **20 MB**, and each image to **4 MB**.
@@ -132,10 +133,10 @@ The complete user-facing release history is maintained in
 [`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
 from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
 The current public release is
-[`v0.2.0`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.2.0).
+[`v0.3.0`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.3.0).
 
 Versions below `1.0.0` represent initial development and may contain breaking
-changes. HACS offers `0.2.0` through its normal release channel.
+changes. HACS offers `0.3.0` through its normal release channel.
 
 ## Release checklist
 

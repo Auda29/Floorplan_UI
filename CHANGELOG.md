@@ -6,6 +6,19 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-18
+
+### Changed
+
+- Reorganize the editor into a searchable entity library, object properties,
+  and plan and view settings. Keep drawing tools and zoom controls by the map.
+- Place an entity or area with a click or tap at the intended location. Drag
+  entities onto the map or press Enter to place them at the center.
+- Keep marker labels readable at different zoom levels and use the Home
+  Assistant theme for the view and editor.
+- Keep all plan objects available while editing, even if the current view
+  hides them in viewing mode.
+
 ## [0.2.0] - 2026-11-18
 
 ### Added
@@ -210,7 +223,9 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.4...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.4...v0.2.0
 [0.2.0-beta.4]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.3...v0.2.0-beta.4
 [0.2.0-beta.3]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.2...v0.2.0-beta.3
 [0.2.0-beta.2]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.1...v0.2.0-beta.2
