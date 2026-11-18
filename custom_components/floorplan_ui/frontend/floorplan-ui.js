@@ -286,7 +286,7 @@ ge.elementStyles = [], ge.shadowRootOptions = { mode: "open" }, ge[Oe("elementPr
  */
 const De = globalThis, er = (a) => a, ni = De.trustedTypes, ir = ni ? ni.createPolicy("lit-html", { createHTML: (a) => a }) : void 0, Yr = "$lit$", It = `lit$${Math.random().toFixed(9).slice(2)}$`, Kr = "?" + It, ts = `<${Kr}>`, Jt = document, Le = () => Jt.createComment(""), Ne = (a) => a === null || typeof a != "object" && typeof a != "function", Tn = Array.isArray, es = (a) => Tn(a) || typeof (a == null ? void 0 : a[Symbol.iterator]) == "function", nn = `[ 	
 \f\r]`, Te = /<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g, nr = /-->/g, rr = />/g, Yt = RegExp(`>|${nn}(?:([^\\s"'>=/]+)(${nn}*=${nn}*(?:[^ 	
-\f\r"'\`<>=]|("|')|))|$)`, "g"), ar = /'/g, sr = /"/g, Xr = /^(?:script|style|textarea|title)$/i, is = (a) => (t, ...e) => ({ _$litType$: a, strings: t, values: e }), V = is(1), _e = Symbol.for("lit-noChange"), dt = Symbol.for("lit-nothing"), or = /* @__PURE__ */ new WeakMap(), qt = Jt.createTreeWalker(Jt, 129);
+\f\r"'\`<>=]|("|')|))|$)`, "g"), ar = /'/g, sr = /"/g, Xr = /^(?:script|style|textarea|title)$/i, is = (a) => (t, ...e) => ({ _$litType$: a, strings: t, values: e }), B = is(1), _e = Symbol.for("lit-noChange"), dt = Symbol.for("lit-nothing"), or = /* @__PURE__ */ new WeakMap(), qt = Jt.createTreeWalker(Jt, 129);
 function qr(a, t) {
   if (!Tn(a) || !a.hasOwnProperty("raw")) throw Error("invalid template strings array");
   return ir !== void 0 ? ir.createHTML(t) : t;
@@ -1720,7 +1720,7 @@ var ui = {};
     }
   }, t.Konva.isBrowser && (window.addEventListener("mouseup", a.DD._endDragBefore, !0), window.addEventListener("touchend", a.DD._endDragBefore, !0), window.addEventListener("touchcancel", a.DD._endDragBefore, !0), window.addEventListener("mousemove", a.DD._drag), window.addEventListener("touchmove", a.DD._drag), window.addEventListener("mouseup", a.DD._endDragAfter, !1), window.addEventListener("touchend", a.DD._endDragAfter, !1), window.addEventListener("touchcancel", a.DD._endDragAfter, !1));
 })(ui);
-var B = {}, N = {};
+var V = {}, N = {};
 Object.defineProperty(N, "__esModule", { value: !0 });
 N.RGBComponent = Ms;
 N.alphaComponent = Ts;
@@ -1877,10 +1877,10 @@ function Gs(a) {
       this._filterUpToDate = !1;
     }
   };
-})(B);
+})(V);
 Object.defineProperty(it, "__esModule", { value: !0 });
 it.Node = void 0;
-const de = St, bt = ui, Ve = B, Lt = U, H = rt, ut = N, ti = "absoluteOpacity", Ke = "allEventListeners", Mt = "absoluteTransform", cr = "absoluteScale", Kt = "canvas", Us = "Change", Bs = "children", Vs = "konva", mn = "listening", Hs = "mouseenter", zs = "mouseleave", Ws = "pointerenter", js = "pointerleave", Ys = "touchenter", Ks = "touchleave", ur = "set", fr = "Shape", ei = " ", gr = "stage", Nt = "transform", Xs = "Stage", yn = "visible", qs = [
+const de = St, bt = ui, Ve = V, Lt = U, H = rt, ut = N, ti = "absoluteOpacity", Ke = "allEventListeners", Mt = "absoluteTransform", cr = "absoluteScale", Kt = "canvas", Us = "Change", Bs = "children", Vs = "konva", mn = "listening", Hs = "mouseenter", zs = "mouseleave", Ws = "pointerenter", js = "pointerleave", Ys = "touchenter", Ks = "touchleave", ur = "set", fr = "Shape", ei = " ", gr = "stage", Nt = "transform", Xs = "Stage", yn = "visible", qs = [
   "xChange.konva",
   "yChange.konva",
   "scaleXChange.konva",
@@ -2728,7 +2728,7 @@ Ve.Factory.backCompat(I, {
 var Zt = {};
 Object.defineProperty(Zt, "__esModule", { value: !0 });
 Zt.Container = void 0;
-const Ce = B, sn = it, fi = N;
+const Ce = V, sn = it, fi = N;
 class te extends sn.Node {
   constructor() {
     super(...arguments), this.children = [];
@@ -2960,7 +2960,7 @@ function na(a, t) {
 }
 (function(a) {
   Object.defineProperty(a, "__esModule", { value: !0 }), a.Stage = a.stages = void 0;
-  const t = rt, e = B, i = Zt, n = U, r = St, s = ui, o = U, l = Bt, h = "Stage", u = "string", p = "px", g = "mouseout", _ = "mouseleave", c = "mouseover", m = "mouseenter", y = "mousemove", S = "mousedown", w = "mouseup", d = "pointermove", f = "pointerdown", b = "pointerup", C = "pointercancel", P = "lostpointercapture", v = "pointerout", E = "pointerleave", k = "pointerover", M = "pointerenter", T = "contextmenu", A = "touchstart", F = "touchend", $ = "touchmove", q = "touchcancel", K = "wheel", L = 5, j = [
+  const t = rt, e = V, i = Zt, n = U, r = St, s = ui, o = U, l = Bt, h = "Stage", u = "string", p = "px", g = "mouseout", _ = "mouseleave", c = "mouseover", m = "mouseenter", y = "mousemove", S = "mousedown", w = "mouseup", d = "pointermove", f = "pointerdown", b = "pointerup", C = "pointercancel", P = "lostpointercapture", v = "pointerout", E = "pointerleave", k = "pointerover", M = "pointerenter", T = "contextmenu", A = "touchstart", F = "touchend", $ = "touchmove", q = "touchcancel", K = "wheel", L = 5, j = [
     [m, "_pointerenter"],
     [S, "_pointerdown"],
     [y, "_pointermove"],
@@ -3396,7 +3396,7 @@ function na(a, t) {
 var He = {}, gt = {};
 (function(a) {
   Object.defineProperty(a, "__esModule", { value: !0 }), a.Shape = a.shapes = void 0;
-  const t = U, e = rt, i = B, n = it, r = N, s = U, o = Bt, l = "hasShadow", h = "shadowRGBA", u = "patternImage", p = "linearGradient", g = "radialGradient";
+  const t = U, e = rt, i = V, n = it, r = N, s = U, o = Bt, l = "hasShadow", h = "shadowRGBA", u = "patternImage", p = "linearGradient", g = "radialGradient";
   let _;
   function c() {
     return _ || (_ = e.Util.createCanvasElement().getContext("2d"), _);
@@ -3688,7 +3688,7 @@ var He = {}, gt = {};
 })(gt);
 Object.defineProperty(He, "__esModule", { value: !0 });
 He.Layer = void 0;
-const Et = rt, on = Zt, ce = it, On = B, pr = St, io = N, no = gt, ro = U, ao = "#", so = "beforeDraw", oo = "draw", ra = [
+const Et = rt, on = Zt, ce = it, On = V, pr = St, io = N, no = gt, ro = U, ao = "#", so = "beforeDraw", oo = "draw", ra = [
   { x: 0, y: 0 },
   { x: -1, y: -1 },
   { x: 1, y: -1 },
@@ -4247,7 +4247,7 @@ var aa = {};
 var pi = {};
 Object.defineProperty(pi, "__esModule", { value: !0 });
 pi.Arc = void 0;
-const _i = B, _o = gt, mr = U, mi = N, mo = U;
+const _i = V, _o = gt, mr = U, mi = N, mo = U;
 class Ft extends _o.Shape {
   _sceneFunc(t) {
     const e = mr.Konva.getAngle(this.angle()), i = this.clockwise();
@@ -4292,7 +4292,7 @@ _i.Factory.addGetterSetter(Ft, "clockwise", !1, (0, mi.getBooleanValidator)());
 var yi = {}, ze = {};
 Object.defineProperty(ze, "__esModule", { value: !0 });
 ze.Line = void 0;
-const bi = B, yo = U, bo = gt, sa = N;
+const bi = V, yo = U, bo = gt, sa = N;
 function bn(a, t, e, i, n, r, s) {
   const o = Math.sqrt(Math.pow(e - a, 2) + Math.pow(i - t, 2)), l = Math.sqrt(Math.pow(n - e, 2) + Math.pow(r - i, 2)), h = s * o / (o + l), u = s * l / (o + l), p = e - h * (n - a), g = i - h * (r - t), _ = e + u * (n - a), c = i + u * (r - t);
   return [p, g, _, c];
@@ -5144,7 +5144,7 @@ var Pe = {}, oa = {};
 })(oa);
 Object.defineProperty(Pe, "__esModule", { value: !0 });
 Pe.Path = void 0;
-const vo = B, So = U, wo = gt, ue = oa;
+const vo = V, So = U, wo = gt, ue = oa;
 class ft extends wo.Shape {
   constructor(t) {
     super(t), this.dataArray = [], this.pathLength = 0, this._readDataAttribute(), this.on("dataChange.konva", function() {
@@ -5499,7 +5499,7 @@ ft.prototype._attrsAffectingSize = ["data"];
 vo.Factory.addGetterSetter(ft, "data");
 Object.defineProperty(yi, "__esModule", { value: !0 });
 yi.Arrow = void 0;
-const vi = B, Co = ze, la = N, xo = U, br = Pe;
+const vi = V, Co = ze, la = N, xo = U, br = Pe;
 class ee extends Co.Line {
   _sceneFunc(t) {
     super._sceneFunc(t);
@@ -5548,7 +5548,7 @@ vi.Factory.addGetterSetter(ee, "pointerAtEnding", !0);
 var Si = {};
 Object.defineProperty(Si, "__esModule", { value: !0 });
 Si.Circle = void 0;
-const ko = B, Ao = gt, Po = N, Eo = U;
+const ko = V, Ao = gt, Po = N, Eo = U;
 class Ee extends Ao.Shape {
   _sceneFunc(t) {
     t.beginPath(), t.arc(0, 0, this.attrs.radius || 0, 0, Math.PI * 2, !1), t.closePath(), t.fillStrokeShape(this);
@@ -5575,7 +5575,7 @@ ko.Factory.addGetterSetter(Ee, "radius", 0, (0, Po.getNumberValidator)());
 var wi = {};
 Object.defineProperty(wi, "__esModule", { value: !0 });
 wi.Ellipse = void 0;
-const Nn = B, Mo = gt, ha = N, To = U;
+const Nn = V, Mo = gt, ha = N, To = U;
 class Ht extends Mo.Shape {
   _sceneFunc(t) {
     const e = this.radiusX(), i = this.radiusY();
@@ -5605,7 +5605,7 @@ Nn.Factory.addGetterSetter(Ht, "radiusY", 0, (0, ha.getNumberValidator)());
 var Ci = {};
 Object.defineProperty(Ci, "__esModule", { value: !0 });
 Ci.Image = void 0;
-const dn = rt, ie = B, Ro = gt, $o = U, We = N;
+const dn = rt, ie = V, Ro = gt, $o = U, We = N;
 let xt = class da extends Ro.Shape {
   constructor(t) {
     super(t), this._loadListener = () => {
@@ -5682,7 +5682,7 @@ ie.Factory.addGetterSetter(xt, "cropHeight", 0, (0, We.getNumberValidator)());
 var ye = {};
 Object.defineProperty(ye, "__esModule", { value: !0 });
 ye.Tag = ye.Label = void 0;
-const xi = B, Fo = gt, Oo = ke, In = N, ca = U, ua = [
+const xi = V, Fo = gt, Oo = ke, In = N, ca = U, ua = [
   "fontFamily",
   "fontSize",
   "fontStyle",
@@ -5779,7 +5779,7 @@ xi.Factory.addGetterSetter(ne, "cornerRadius", 0, (0, In.getNumberOrArrayOfNumbe
 var je = {};
 Object.defineProperty(je, "__esModule", { value: !0 });
 je.Rect = void 0;
-const Io = B, Go = gt, Uo = U, Bo = rt, Vo = N;
+const Io = V, Go = gt, Uo = U, Bo = rt, Vo = N;
 class ki extends Go.Shape {
   _sceneFunc(t) {
     const e = this.cornerRadius(), i = this.width(), n = this.height();
@@ -5793,7 +5793,7 @@ Io.Factory.addGetterSetter(ki, "cornerRadius", 0, (0, Vo.getNumberOrArrayOfNumbe
 var Ai = {};
 Object.defineProperty(Ai, "__esModule", { value: !0 });
 Ai.RegularPolygon = void 0;
-const fa = B, Ho = gt, ga = N, zo = U;
+const fa = V, Ho = gt, ga = N, zo = U;
 class re extends Ho.Shape {
   _sceneFunc(t) {
     const e = this._getPoints();
@@ -5846,7 +5846,7 @@ fa.Factory.addGetterSetter(re, "sides", 0, (0, ga.getNumberValidator)());
 var Pi = {};
 Object.defineProperty(Pi, "__esModule", { value: !0 });
 Pi.Ring = void 0;
-const pa = B, Wo = gt, _a = N, jo = U, vr = Math.PI * 2;
+const pa = V, Wo = gt, _a = N, jo = U, vr = Math.PI * 2;
 class ae extends Wo.Shape {
   _sceneFunc(t) {
     t.beginPath(), t.arc(0, 0, this.innerRadius(), 0, vr, !1), t.moveTo(this.outerRadius(), 0), t.arc(0, 0, this.outerRadius(), vr, 0, !0), t.closePath(), t.fillStrokeShape(this);
@@ -5874,7 +5874,7 @@ pa.Factory.addGetterSetter(ae, "outerRadius", 0, (0, _a.getNumberValidator)());
 var Ei = {};
 Object.defineProperty(Ei, "__esModule", { value: !0 });
 Ei.Sprite = void 0;
-const se = B, Yo = gt, Ko = Ae, ma = N, Xo = U;
+const se = V, Yo = gt, Ko = Ae, ma = N, Xo = U;
 class kt extends Yo.Shape {
   constructor(t) {
     super(t), this._updated = !0, this.anim = new Ko.Animation(() => {
@@ -5949,7 +5949,7 @@ se.Factory.backCompat(kt, {
 var Mi = {};
 Object.defineProperty(Mi, "__esModule", { value: !0 });
 Mi.Star = void 0;
-const Un = B, qo = gt, Bn = N, Qo = U;
+const Un = V, qo = gt, Bn = N, Qo = U;
 class zt extends qo.Shape {
   _sceneFunc(t) {
     const e = this.innerRadius(), i = this.outerRadius(), n = this.numPoints();
@@ -5985,7 +5985,7 @@ var Me = {};
 Object.defineProperty(Me, "__esModule", { value: !0 });
 Me.Text = void 0;
 Me.stringToArray = Xt;
-const xn = rt, _t = B, Jo = gt, cn = U, Wt = N, Zo = U;
+const xn = rt, _t = V, Jo = gt, cn = U, Wt = N, Zo = U;
 function Xt(a) {
   return [...a].reduce((t, e, i, n) => {
     if (new RegExp("\\p{Emoji}", "u").test(e)) {
@@ -6231,7 +6231,7 @@ _t.Factory.addGetterSetter(lt, "textDecoration", "");
 var Ti = {};
 Object.defineProperty(Ti, "__esModule", { value: !0 });
 Ti.TextPath = void 0;
-const gn = rt, wt = B, _l = gt, $e = Pe, pn = Me, wa = N, ml = U, yl = "", Ca = "normal";
+const gn = rt, wt = V, _l = gt, $e = Pe, pn = Me, wa = N, ml = U, yl = "", Ca = "normal";
 function xa(a) {
   a.fillText(this.partialText, 0, 0);
 }
@@ -6391,7 +6391,7 @@ wt.Factory.addGetterSetter(pt, "kerningFunc", void 0);
 var Ri = {};
 Object.defineProperty(Ri, "__esModule", { value: !0 });
 Ri.Transformer = void 0;
-const X = rt, Y = B, kr = it, bl = gt, vl = je, Ar = ke, vt = U, jt = N, Sl = U, Aa = "tr-konva", wl = [
+const X = rt, Y = V, kr = it, bl = gt, vl = je, Ar = ke, vt = U, jt = N, Sl = U, Aa = "tr-konva", wl = [
   "resizeEnabledChange",
   "rotateAnchorOffsetChange",
   "rotateEnabledChange",
@@ -7020,7 +7020,7 @@ Y.Factory.backCompat(z, {
 var $i = {};
 Object.defineProperty($i, "__esModule", { value: !0 });
 $i.Wedge = void 0;
-const Fi = B, Rl = gt, $l = U, Ea = N, Fl = U;
+const Fi = V, Rl = gt, $l = U, Ea = N, Fl = U;
 class Ot extends Rl.Shape {
   _sceneFunc(t) {
     t.beginPath(), t.arc(0, 0, this.radius(), 0, $l.Konva.getAngle(this.angle()), this.clockwise()), t.lineTo(0, 0), t.closePath(), t.fillStrokeShape(this);
@@ -7054,7 +7054,7 @@ Fi.Factory.backCompat(Ot, {
 var Oi = {};
 Object.defineProperty(Oi, "__esModule", { value: !0 });
 Oi.Blur = void 0;
-const Er = B, Ol = it, Dl = N;
+const Er = V, Ol = it, Dl = N;
 function Mr() {
   this.r = 0, this.g = 0, this.b = 0, this.a = 0, this.next = null;
 }
@@ -7611,7 +7611,7 @@ Er.Factory.addGetterSetter(Ol.Node, "blurRadius", 0, (0, Dl.getNumberValidator)(
 var Di = {};
 Object.defineProperty(Di, "__esModule", { value: !0 });
 Di.Brighten = void 0;
-const Tr = B, Ul = it, Bl = N, Vl = function(a) {
+const Tr = V, Ul = it, Bl = N, Vl = function(a) {
   const t = this.brightness() * 255, e = a.data, i = e.length;
   for (let n = 0; n < i; n += 4)
     e[n] += t, e[n + 1] += t, e[n + 2] += t;
@@ -7621,7 +7621,7 @@ Tr.Factory.addGetterSetter(Ul.Node, "brightness", 0, (0, Bl.getNumberValidator)(
 var Li = {};
 Object.defineProperty(Li, "__esModule", { value: !0 });
 Li.Contrast = void 0;
-const Rr = B, Hl = it, zl = N, Wl = function(a) {
+const Rr = V, Hl = it, zl = N, Wl = function(a) {
   const t = Math.pow((this.contrast() + 100) / 100, 2), e = a.data, i = e.length;
   let n = 150, r = 150, s = 150;
   for (let o = 0; o < i; o += 4)
@@ -7632,7 +7632,7 @@ Rr.Factory.addGetterSetter(Hl.Node, "contrast", 0, (0, zl.getNumberValidator)(),
 var Ni = {};
 Object.defineProperty(Ni, "__esModule", { value: !0 });
 Ni.Emboss = void 0;
-const Ut = B, Ii = it, jl = rt, Ma = N, Yl = function(a) {
+const Ut = V, Ii = it, jl = rt, Ma = N, Yl = function(a) {
   const t = this.embossStrength() * 10, e = this.embossWhiteLevel() * 255, i = this.embossDirection(), n = this.embossBlend(), r = a.data, s = a.width, o = a.height, l = s * 4;
   let h = 0, u = 0, p = o;
   switch (i) {
@@ -7694,7 +7694,7 @@ Ut.Factory.addGetterSetter(Ii.Node, "embossBlend", !1, void 0, Ut.Factory.afterS
 var Gi = {};
 Object.defineProperty(Gi, "__esModule", { value: !0 });
 Gi.Enhance = void 0;
-const $r = B, Kl = it, Xl = N;
+const $r = V, Kl = it, Xl = N;
 function _n(a, t, e, i, n) {
   const r = e - t, s = n - i;
   if (r === 0)
@@ -7743,7 +7743,7 @@ Ui.Grayscale = Ql;
 var Bi = {};
 Object.defineProperty(Bi, "__esModule", { value: !0 });
 Bi.HSL = void 0;
-const be = B, Vn = it, Hn = N;
+const be = V, Vn = it, Hn = N;
 be.Factory.addGetterSetter(Vn.Node, "hue", 0, (0, Hn.getNumberValidator)(), be.Factory.afterSetFilter);
 be.Factory.addGetterSetter(Vn.Node, "saturation", 0, (0, Hn.getNumberValidator)(), be.Factory.afterSetFilter);
 be.Factory.addGetterSetter(Vn.Node, "luminance", 0, (0, Hn.getNumberValidator)(), be.Factory.afterSetFilter);
@@ -7757,7 +7757,7 @@ Bi.HSL = Jl;
 var Vi = {};
 Object.defineProperty(Vi, "__esModule", { value: !0 });
 Vi.HSV = void 0;
-const ve = B, zn = it, Wn = N, Zl = function(a) {
+const ve = V, zn = it, Wn = N, Zl = function(a) {
   const t = a.data, e = t.length, i = Math.pow(2, this.value()), n = Math.pow(2, this.saturation()), r = Math.abs(this.hue() + 360) % 360, s = i * n * Math.cos(r * Math.PI / 180), o = i * n * Math.sin(r * Math.PI / 180), l = 0.299 * i + 0.701 * s + 0.167 * o, h = 0.587 * i - 0.587 * s + 0.33 * o, u = 0.114 * i - 0.114 * s - 0.497 * o, p = 0.299 * i - 0.299 * s - 0.328 * o, g = 0.587 * i + 0.413 * s + 0.035 * o, _ = 0.114 * i - 0.114 * s + 0.293 * o, c = 0.299 * i - 0.3 * s + 1.25 * o, m = 0.587 * i - 0.586 * s - 1.05 * o, y = 0.114 * i + 0.886 * s - 0.2 * o;
   for (let S = 0; S < e; S += 4) {
     const w = t[S + 0], d = t[S + 1], f = t[S + 2], b = t[S + 3];
@@ -7780,7 +7780,7 @@ Hi.Invert = th;
 var zi = {};
 Object.defineProperty(zi, "__esModule", { value: !0 });
 zi.Kaleidoscope = void 0;
-const si = B, Ta = it, Fr = rt, Ra = N, eh = function(a, t, e) {
+const si = V, Ta = it, Fr = rt, Ra = N, eh = function(a, t, e) {
   const i = a.data, n = t.data, r = a.width, s = a.height, o = e.polarCenterX || r / 2, l = e.polarCenterY || s / 2;
   let h = Math.sqrt(o * o + l * l), u = r - o, p = s - l;
   const g = Math.sqrt(u * u + p * p);
@@ -7846,7 +7846,7 @@ si.Factory.addGetterSetter(Ta.Node, "kaleidoscopeAngle", 0, (0, Ra.getNumberVali
 var Wi = {};
 Object.defineProperty(Wi, "__esModule", { value: !0 });
 Wi.Mask = void 0;
-const Or = B, rh = it, ah = N;
+const Or = V, rh = it, ah = N;
 function Qe(a, t, e) {
   let i = (e * a.width + t) * 4;
   const n = [];
@@ -7944,7 +7944,7 @@ Or.Factory.addGetterSetter(rh.Node, "threshold", 0, (0, ah.getNumberValidator)()
 var ji = {};
 Object.defineProperty(ji, "__esModule", { value: !0 });
 ji.Noise = void 0;
-const Dr = B, fh = it, gh = N, ph = function(a) {
+const Dr = V, fh = it, gh = N, ph = function(a) {
   const t = this.noise() * 255, e = a.data, i = e.length, n = t / 2;
   for (let r = 0; r < i; r += 4)
     e[r + 0] += n - 2 * n * Math.random(), e[r + 1] += n - 2 * n * Math.random(), e[r + 2] += n - 2 * n * Math.random();
@@ -7954,7 +7954,7 @@ Dr.Factory.addGetterSetter(fh.Node, "noise", 0.2, (0, gh.getNumberValidator)(), 
 var Yi = {};
 Object.defineProperty(Yi, "__esModule", { value: !0 });
 Yi.Pixelate = void 0;
-const Lr = B, _h = rt, mh = it, yh = N, bh = function(a) {
+const Lr = V, _h = rt, mh = it, yh = N, bh = function(a) {
   let t = Math.ceil(this.pixelSize()), e = a.width, i = a.height, n = Math.ceil(e / t), r = Math.ceil(i / t), s = a.data;
   if (t <= 0) {
     _h.Util.error("pixelSize value can not be <= 0");
@@ -7989,7 +7989,7 @@ Lr.Factory.addGetterSetter(mh.Node, "pixelSize", 8, (0, yh.getNumberValidator)()
 var Ki = {};
 Object.defineProperty(Ki, "__esModule", { value: !0 });
 Ki.Posterize = void 0;
-const Nr = B, vh = it, Sh = N, wh = function(a) {
+const Nr = V, vh = it, Sh = N, wh = function(a) {
   const t = Math.round(this.levels() * 254) + 1, e = a.data, i = e.length, n = 255 / t;
   for (let r = 0; r < i; r += 1)
     e[r] = Math.floor(e[r] / n) * n;
@@ -7999,7 +7999,7 @@ Nr.Factory.addGetterSetter(vh.Node, "levels", 0.5, (0, Sh.getNumberValidator)(),
 var Xi = {};
 Object.defineProperty(Xi, "__esModule", { value: !0 });
 Xi.RGB = void 0;
-const oi = B, jn = it, Ch = N, xh = function(a) {
+const oi = V, jn = it, Ch = N, xh = function(a) {
   const t = a.data, e = t.length, i = this.red(), n = this.green(), r = this.blue();
   for (let s = 0; s < e; s += 4) {
     const o = (0.34 * t[s] + 0.5 * t[s + 1] + 0.16 * t[s + 2]) / 255;
@@ -8017,7 +8017,7 @@ oi.Factory.addGetterSetter(jn.Node, "blue", 0, Ch.RGBComponent, oi.Factory.after
 var qi = {};
 Object.defineProperty(qi, "__esModule", { value: !0 });
 qi.RGBA = void 0;
-const Ue = B, Qi = it, kh = N, Ah = function(a) {
+const Ue = V, Qi = it, kh = N, Ah = function(a) {
   const t = a.data, e = t.length, i = this.red(), n = this.green(), r = this.blue(), s = this.alpha();
   for (let o = 0; o < e; o += 4) {
     const l = 1 - s;
@@ -8066,7 +8066,7 @@ Zi.Solarize = Eh;
 var tn = {};
 Object.defineProperty(tn, "__esModule", { value: !0 });
 tn.Threshold = void 0;
-const Ir = B, Mh = it, Th = N, Rh = function(a) {
+const Ir = V, Mh = it, Th = N, Rh = function(a) {
   const t = this.threshold() * 255, e = a.data, i = e.length;
   for (let n = 0; n < i; n += 1)
     e[n] = e[n] < t ? 0 : 255;
@@ -9218,7 +9218,8 @@ function lc(a, t, e) {
 const hc = jr`
   :host {
     display: block;
-    height: 100%;
+    height: 100vh;
+    height: 100dvh;
     background: var(--primary-background-color, #fafafa);
     color: var(--primary-text-color, #212121);
   }
@@ -9233,6 +9234,7 @@ const hc = jr`
   .workspace {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
   }
@@ -9358,8 +9360,8 @@ const hc = jr`
   }
 
   .canvas-wrapper {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
   }
 
   .loading,
@@ -9806,7 +9808,7 @@ const hc = jr`
 function dc(a, t, e) {
   var l, h, u, p, g, _, c, m, y, S, w, d, f, b, C, P, v, E, k, M, T;
   const { currentPlan: i, currentView: n, currentViewId: r, selectedArea: s, selectedMarker: o } = a;
-  return V`
+  return B`
     <aside class="editor-panel" aria-label=${e("editor.title")}>
       <header class="editor-panel-header">
         <span>${e("editor.title")}</span>
@@ -9815,7 +9817,7 @@ function dc(a, t, e) {
 
       ${s ? cc(s, a.areas, t, e) : ""}
       ${o ? uc(o, a.areas, t, e) : ""}
-      ${!s && !o && i ? V`<p class="editor-selection-hint">${e("editor.selectHint")}</p>` : ""}
+      ${!s && !o && i ? B`<p class="editor-selection-hint">${e("editor.selectHint")}</p>` : ""}
 
       <section class="editor-card">
         <h2>${e("editor.quickActions")}</h2>
@@ -9861,7 +9863,7 @@ function dc(a, t, e) {
               >
                 <option value="">${e("editor.allDomains")}</option>
                 ${a.entityDomains.map(
-    (A) => V`<option value=${A}>${A}</option>`
+    (A) => B`<option value=${A}>${A}</option>`
   )}
               </select>
             </label>
@@ -9872,7 +9874,7 @@ function dc(a, t, e) {
                 @change=${(A) => t.setEntityAreaFilter(A.target.value)}
               >
                 <option value="">${e("editor.allAreas")}</option>
-                ${a.areas.map((A) => V`<option value=${A.id}>${A.name}</option>`)}
+                ${a.areas.map((A) => B`<option value=${A.id}>${A.name}</option>`)}
               </select>
             </label>
           </div>
@@ -9885,7 +9887,7 @@ function dc(a, t, e) {
           >
             <option value="">${e("editor.selectEntity", { count: a.entityCount })}</option>
             ${a.entityOptions.map(
-    (A) => V`
+    (A) => B`
                 <option value=${A.entity_id}>
                   ${A.entity_id}${A.name ? ` — ${A.name}` : ""}
                 </option>
@@ -9903,7 +9905,7 @@ function dc(a, t, e) {
         <strong class="editor-helper">${e("editor.dragEntity")}</strong>
         <div class="entity-palette">
           ${a.entityOptions.slice(0, 80).map(
-    (A) => V`
+    (A) => B`
               <div
                 class="entity-card"
                 draggable="true"
@@ -10071,7 +10073,7 @@ function dc(a, t, e) {
   `;
 }
 function cc(a, t, e, i) {
-  return V`
+  return B`
     <section class="editor-card editor-selection">
       <h2>${i("editor.selectedArea")}</h2>
       <strong class="editor-selection-name">${a.id}</strong>
@@ -10081,7 +10083,7 @@ function cc(a, t, e, i) {
           <select @change=${e.bindArea} .value=${a.area_id ?? ""}>
             <option value="">${i("editor.unbound")}</option>
             ${t.map(
-    (n) => V`<option value=${n.id}>${n.name}</option>`
+    (n) => B`<option value=${n.id}>${n.name}</option>`
   )}
           </select>
         </label>
@@ -10140,7 +10142,7 @@ function cc(a, t, e, i) {
 }
 function uc(a, t, e, i) {
   var n;
-  return V`
+  return B`
     <section class="editor-card editor-selection">
       <h2>${i("editor.selectedMarker")}</h2>
       <strong class="editor-selection-name">${a.entity_id}</strong>
@@ -10157,7 +10159,7 @@ function uc(a, t, e, i) {
           ${i("editor.haArea")}
           <select .value=${a.area_id ?? ""} @change=${e.updateMarkerArea}>
             <option value="">${i("editor.unbound")}</option>
-            ${t.map((r) => V`<option value=${r.id}>${r.name}</option>`)}
+            ${t.map((r) => B`<option value=${r.id}>${r.name}</option>`)}
           </select>
         </label>
         <label>
@@ -10202,7 +10204,7 @@ function uc(a, t, e, i) {
             placeholder="{value} °C"
           />
         </label>
-        ${a.bind.secondary ? V`
+        ${a.bind.secondary ? B`
               <label>
                 ${i("editor.secondary")}
                 <select
@@ -10230,7 +10232,7 @@ function uc(a, t, e, i) {
               <button type="button" @click=${e.removeMarkerSecondaryBinding}>
                 ${i("editor.removeSecondary")}
               </button>
-            ` : V`
+            ` : B`
               <button type="button" @click=${e.addMarkerSecondaryBinding}>
                 + ${i("editor.addSecondary")}
               </button>
@@ -10292,7 +10294,7 @@ const Xn = class Xn extends pe {
   }
   render() {
     const t = this.dialog;
-    return t ? V`
+    return t ? B`
       <dialog
         aria-label=${t.title}
         @cancel=${(e) => {
@@ -10306,8 +10308,8 @@ const Xn = class Xn extends pe {
         @keydown=${this._onKeydown}
       >
         <h2>${t.title}</h2>
-        ${t.message ? V`<p>${t.message}</p>` : dt}
-        ${t.kind === "text" ? V`
+        ${t.message ? B`<p>${t.message}</p>` : dt}
+        ${t.kind === "text" ? B`
               <input
                 .value=${this._value}
                 @input=${(e) => {
@@ -10788,7 +10790,7 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
       tags: bd(t),
       bind: { primary: { source: "state" } }
     };
-    this._commitConfig(Ud(this._config, i.plan_id, r)), this._selectedMarkerId = r.id, this._selectedAreaId = null, this._entityToAdd = "", this._renderMarkers(this._getCurrentPlan());
+    this._commitConfig(Ud(this._config, i.plan_id, r)), this._selectCanvasObject("marker", r.id), this._entityToAdd = "", this._renderMarkers(this._getCurrentPlan());
   }
   _onCanvasDragOver(t) {
     !this._editMode || !this._getCurrentPlan() || (t.preventDefault(), t.dataTransfer && (t.dataTransfer.dropEffect = "copy"), t.currentTarget.classList.add("drag-target"));
@@ -11305,16 +11307,17 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
       { id: "network", name: "Network", filters: { tags: ["network"] } },
       { id: "entertainment", name: "Entertainment", filters: { domains: ["media_player"] } }
     ], e = (h = this._config) != null && h.views.length ? this._config.views : t, i = ((u = this._config) == null ? void 0 : u.plans) ?? [], n = this._getCurrentPlan(), r = this._getCurrentView(), s = this._getSelectedArea(), o = this._getSelectedMarker(), l = this._t;
-    return V`
+    return B`
       <div class="container ${this.narrow ? "narrow" : ""}">
         <div class="toolbar">
           <div class="toolbar-left">
+            ${this.narrow ? B`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>` : ""}
             <h1>${l("panel.title")}</h1>
-            ${n ? V`<label class="plan-select">
+            ${n ? B`<label class="plan-select">
                   <span>${l("panel.plan")}</span>
                   <select @change=${this._selectPlan}>
                     ${i.map(
-      (p) => V`
+      (p) => B`
                         <option
                           value=${p.plan_id}
                           ?selected=${(n == null ? void 0 : n.plan_id) === p.plan_id}
@@ -11327,7 +11330,7 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
                 </label>` : ""}
           </div>
           <div class="toolbar-right">
-            ${this._canEdit && this._config ? V`
+            ${this._canEdit && this._config ? B`
                   <button
                     class="edit-toggle ${this._editMode ? "active" : ""}"
                     aria-pressed=${this._editMode ? "true" : "false"}
@@ -11335,15 +11338,15 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
                   >
                     ${this._editMode ? l("panel.done") : l("panel.edit")}
                   </button>
-                ` : this._canEdit ? "" : V`<span class="viewer-note">${l("panel.viewOnly")}</span>`}
+                ` : this._canEdit ? "" : B`<span class="viewer-note">${l("panel.viewOnly")}</span>`}
           </div>
         </div>
-        ${n ? V`<nav class="views-bar" aria-label=${l("panel.views")}>
+        ${n ? B`<nav class="views-bar" aria-label=${l("panel.views")}>
               <div class="view-tabs">
                 ${e.map(
       (p) => {
         var g;
-        return V`
+        return B`
                     <button
                       class="view-tab ${this._currentView === p.id ? "active" : ""}"
                       type="button"
@@ -11383,37 +11386,37 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
             @dragleave=${this._onCanvasDragLeave}
             @drop=${this._onCanvasDrop}
           >
-            ${this._loading ? V`<div class="loading" role="status">${l("panel.loading")}</div>` : V`<div class="canvas-wrapper"></div>`}
+            ${this._loading ? B`<div class="loading" role="status">${l("panel.loading")}</div>` : B`<div class="canvas-wrapper"></div>`}
             <div class="panel-feedback">
-              ${this._saveState === "pending" ? V`<div class="status" role="status" aria-live="polite">
+              ${this._saveState === "pending" ? B`<div class="status" role="status" aria-live="polite">
                     ${l("panel.pending")}
                   </div>` : ""}
-              ${this._saveState === "saving" ? V`<div class="status" role="status" aria-live="polite">
+              ${this._saveState === "saving" ? B`<div class="status" role="status" aria-live="polite">
                     ${l("panel.saving")}
                   </div>` : ""}
-              ${this._notice ? V`<div class="status" role="status" aria-live="polite">${this._notice}</div>` : ""}
-              ${this._error ? V`
+              ${this._notice ? B`<div class="status" role="status" aria-live="polite">${this._notice}</div>` : ""}
+              ${this._error ? B`
                     <div class="status error" role="alert">
                       ${this._error}
-                      ${this._loadFailed ? V`<button type="button" @click=${this._loadConfig}>
+                      ${this._loadFailed ? B`<button type="button" @click=${this._loadConfig}>
                             ${l("panel.retry")}
-                          </button>` : this._saveState === "failed" ? this._saveConflict ? V`
+                          </button>` : this._saveState === "failed" ? this._saveConflict ? B`
                                 <button type="button" @click=${this._reloadAfterConflict}>
                                   ${l("panel.reload")}
                                 </button>
-                              ` : V`<button type="button" @click=${this._retrySave}>
+                              ` : B`<button type="button" @click=${this._retrySave}>
                                 ${l("panel.retry")}
                               </button>` : ""}
                     </div>
                   ` : ""}
             </div>
-            ${n && !this._loading ? V`<button class="canvas-fit" type="button" @click=${this._fitCurrentPlan}>
+            ${n && !this._loading ? B`<button class="canvas-fit" type="button" @click=${this._fitCurrentPlan}>
                   ${l("panel.fit")}
                 </button>` : ""}
-            ${!this._loading && !this._loadFailed && !n ? V`<div class="empty-state">
+            ${!this._loading && !this._loadFailed && !n ? B`<div class="empty-state">
                   <h2>${l("panel.emptyTitle")}</h2>
                   <p>${this._canEdit ? l("panel.emptyDescription") : l("panel.emptyViewer")}</p>
-                  ${this._canEdit ? V`<button
+                  ${this._canEdit ? B`<button
                           class="upload-btn"
                           type="button"
                           @click=${() => this._triggerFileUpload()}
@@ -11431,9 +11434,9 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
             <section class="canvas-accessibility" aria-label=${l("panel.objects")}>
               <ul>
                 ${n == null ? void 0 : n.areas.map(
-      (p) => V`
+      (p) => B`
                     <li>
-                      ${this._editMode ? V`<button
+                      ${this._editMode ? B`<button
                             type="button"
                             aria-pressed=${this._selectedAreaId === p.id ? "true" : "false"}
                             @click=${() => this._selectCanvasObject("area", p.id)}
@@ -11444,7 +11447,7 @@ const pc = 500, Hr = 6, _c = 250, qn = class qn extends pe {
                   `
     )}
                 ${n == null ? void 0 : n.markers.map(
-      (p) => V`
+      (p) => B`
                     <li>
                       <button
                         type="button"

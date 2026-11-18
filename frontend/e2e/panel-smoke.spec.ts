@@ -49,7 +49,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   );
   await page.goto("http://localhost/");
   await page.addStyleTag({
-    content: "html, body { height: 100%; margin: 0; } floorplan-ui-panel { height: 100%; }",
+    content: "html, body { height: 100%; margin: 0; }",
   });
   await page.addScriptTag({ content: await readFile(bundlePath, "utf8"), type: "module" });
   await page.waitForFunction(() => customElements.get("floorplan-ui-panel") !== undefined);
@@ -168,6 +168,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
       canvasTop: canvasBounds.top,
       canvasWidth: canvasBounds.width,
       canvasHeight: canvasBounds.height,
+      workspaceBottom: canvasBounds.bottom,
       stageWidth: stageElement.getBoundingClientRect().width,
       stageHeight: stageElement.getBoundingClientRect().height,
       editorHasHorizontalOverflow: editorElement.scrollWidth > editorElement.clientWidth,
@@ -179,6 +180,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   expect(layout.editorWidth).toBeLessThanOrEqual(420);
   expect(layout.canvasTop).toBeCloseTo(layout.editorTop, 0);
   expect(layout.canvasHeight).toBeGreaterThan(700);
+  expect(layout.workspaceBottom).toBeCloseTo(946, 0);
   expect(layout.stageWidth).toBeCloseTo(layout.canvasWidth, 0);
   expect(layout.stageHeight).toBeCloseTo(layout.canvasHeight, 0);
   expect(layout.editorHasHorizontalOverflow).toBe(false);
@@ -662,6 +664,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
       minimumTouchTargetHeight: Math.min(...visibleTouchTargets.map((bounds) => bounds.height)),
       workspaceIsScrollable: workspaceElement.scrollHeight > workspaceElement.clientHeight,
       documentHasHorizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
+      panelHeight: element.getBoundingClientRect().height,
       containerHasHorizontalOverflow: containerElement.scrollWidth > containerElement.clientWidth,
       toolbarHasHorizontalOverflow: toolbarElement.scrollWidth > toolbarElement.clientWidth,
     };
@@ -676,6 +679,7 @@ test("production bundle completes upload, save, edit, and reload", async ({ page
   expect(narrowLayout.buttonHeight).toBeGreaterThanOrEqual(44);
   expect(narrowLayout.minimumTouchTargetHeight).toBeGreaterThanOrEqual(44);
   expect(narrowLayout.workspaceIsScrollable).toBe(true);
+  expect(narrowLayout.panelHeight).toBeCloseTo(600, 0);
   expect(narrowLayout.documentHasHorizontalOverflow).toBe(false);
   expect(narrowLayout.containerHasHorizontalOverflow).toBe(false);
   expect(narrowLayout.toolbarHasHorizontalOverflow).toBe(false);

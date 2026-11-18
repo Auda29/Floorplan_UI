@@ -3,7 +3,8 @@ import { css } from "lit";
 export const floorplanPanelStyles = css`
   :host {
     display: block;
-    height: 100%;
+    height: 100vh;
+    height: 100dvh;
     background: var(--primary-background-color, #fafafa);
     color: var(--primary-text-color, #212121);
   }
@@ -18,6 +19,7 @@ export const floorplanPanelStyles = css`
   .workspace {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
   }
@@ -143,8 +145,8 @@ export const floorplanPanelStyles = css`
   }
 
   .canvas-wrapper {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
   }
 
   .loading,

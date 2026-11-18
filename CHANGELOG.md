@@ -21,7 +21,8 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Give the canvas priority, keep view switching in a scrollable row, and show
   selected area or marker properties at the top of the editor. On phones the
-  plan sits above the editing controls.
+  plan sits above the editing controls and the Home Assistant sidebar is
+  available from the toolbar.
 - Use Home Assistant's Pillow version so the integration can be installed on
   current Home Assistant releases.
 
@@ -30,6 +31,8 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Create plans, areas, and markers over plain HTTP on the local network.
 - Keep the canvas center when its size changes, handle pinch zoom during
   touch drags, and keep selected-area resize and vertex handles accessible.
+  Fit the workspace within the Home Assistant viewport so the editor and
+  canvas controls stay reachable.
 - Retry failed migration writes on the next load. Validate older backups even
   when their metadata needs migration, and allow individual plans with missing
   images to be repaired.

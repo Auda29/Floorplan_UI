@@ -805,8 +805,7 @@ export class FloorplanPanel extends LitElement {
     };
 
     void this._commitConfig(addMarker(this._config, plan.plan_id, marker));
-    this._selectedMarkerId = marker.id;
-    this._selectedAreaId = null;
+    this._selectCanvasObject("marker", marker.id);
     this._entityToAdd = "";
     this._renderMarkers(this._getCurrentPlan());
   }
@@ -1580,6 +1579,9 @@ export class FloorplanPanel extends LitElement {
       <div class="container ${this.narrow ? "narrow" : ""}">
         <div class="toolbar">
           <div class="toolbar-left">
+            ${this.narrow
+              ? html`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>`
+              : ""}
             <h1>${t("panel.title")}</h1>
             ${currentPlan
               ? html`<label class="plan-select">
