@@ -136,7 +136,23 @@ async function mount(page: Page): Promise<void> {
     .not.toBe(1);
 }
 
+async function waitForStageSize(page: Page) {
+  await expect
+    .poll(() =>
+      page.locator("floorplan-ui-panel").evaluate((element) => {
+        const stage = (element as Panel)._stage;
+        const bounds = stage.container().getBoundingClientRect();
+        return (
+          Math.abs(stage.width() - bounds.width) < 0.5 &&
+          Math.abs(stage.height() - bounds.height) < 0.5
+        );
+      })
+    )
+    .toBe(true);
+}
+
 async function markerPosition(page: Page) {
+  await waitForStageSize(page);
   return page.locator("floorplan-ui-panel").evaluate((element) => {
     const panel = element as Panel;
     const position = panel._markerGroups.get("lamp")!.getAbsolutePosition();
@@ -177,6 +193,7 @@ test("adding an area preserves pan and zoom and supports touch selection", async
   await mount(page);
   const panel = page.locator("floorplan-ui-panel");
   await panel.getByRole("button", { name: "Edit", exact: true }).click();
+  await waitForStageSize(page);
   await panel.evaluate((element) => {
     const stage = (element as Panel)._stage;
     stage.scale({ x: 0.7, y: 0.7 });
