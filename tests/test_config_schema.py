@@ -9,7 +9,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from tests.test_store import FloorplanStore, valid_config
+from tests.test_store import FloorplanStore, valid_config, valid_model_config
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "schema" / "floorplan-config.schema.json"
@@ -26,6 +26,71 @@ class ConfigSchemaContractTests(unittest.TestCase):
         normalized = FloorplanStore.validate_and_normalize(valid_config())
 
         self.validator.validate(normalized)
+
+    def test_model_plan_and_svg_image_plan_match_shared_schema(self) -> None:
+        config = valid_model_config()
+        image_plan = valid_config()["plans"][0]
+        image_plan["plan_id"] = "svg-plan"
+        image_plan["background"]["content_type"] = "image/svg+xml"
+        config["plans"].append(image_plan)
+        self.validator.validate(config)
+        self.validator.validate(FloorplanStore.validate_and_normalize(config))
+
+        config["plans"][0]["background"] = {"type": "model"}
+        self.validator.validate(config)
+        self.validator.validate(FloorplanStore.validate_and_normalize(config))
+
+    def test_schema_and_backend_reject_invalid_v4_fields(self) -> None:
+        for path, value in (
+            (("version",), 0),
+            (("plans", 0, "background", "content_type"), "image/svg+xml"),
+            (("plans", 0, "background", "url"), "data:model/gltf-binary;base64,YQ=="),
+            (("plans", 0, "background", "unit_scale"), 1000.01),
+            (("plans", 0, "background", "height"), 0),
+            (("plans", 0, "background", "unexpected"), False),
+            (("plans", 0, "areas", 0, "shape", "mesh_name"), "a" * 257),
+            (("plans", 0, "areas", 0, "shape", "anchor"), {"x": 1, "y": 2}),
+            (("plans", 0, "areas", 1, "shape", "z"), False),
+            (("plans", 0, "markers", 0, "pos", "z"), "3"),
+            (("plans", 0, "view", "shadows"), 1),
+            (("plans", 0, "view", "camera_mode"), "orthographic"),
+            (("plans", 0, "view", "camera_presets"), [None] * 21),
+            (("plans", 0, "view", "camera_presets", 0, "zoom"), 0),
+            (("plans", 0, "view", "camera_presets", 0, "mode"), "orthographic"),
+            (("plans", 0, "view", "camera_presets", 0, "unexpected"), "value"),
+            (("views", 0, "area_overlay", "primary", "aggregation"), "median"),
+            (("views", 0, "area_overlay", "primary", "entity_id"), "sensor.temp"),
+            (("views", 0, "area_overlay", "primary", "domain"), None),
+            (("views", 0, "style", "active_area_opacity"), 1.1),
+            (("views", 0, "style", "dim_inactive_areas"), "true"),
+            (("views", 0, "style", "unexpected"), "value"),
+            (("views", 0, "camera_preset_id"), ""),
+        ):
+            with self.subTest(path=path, value=value):
+                config = valid_model_config()
+                node = config
+                for key in path[:-1]:
+                    node = node[key]
+                node[path[-1]] = value
+                self.assertFalse(self.validator.is_valid(config))
+                with self.assertRaises(ValueError):
+                    FloorplanStore.validate_and_normalize(config)
+
+    def test_shapes_must_match_the_background_type(self) -> None:
+        model = valid_model_config()
+        image = valid_model_config()
+        image["plans"][0]["background"] = valid_config()["plans"][0]["background"]
+        model["plans"][0]["areas"][0]["shape"] = {
+            "type": "rect",
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 1,
+        }
+        for config in (model, image):
+            self.assertFalse(self.validator.is_valid(config))
+            with self.assertRaisesRegex(ValueError, "shape is invalid"):
+                FloorplanStore.validate_and_normalize(config)
 
     def test_schema_rejects_inputs_rejected_by_backend(self) -> None:
         cases: list[tuple[str, dict]] = []

@@ -9,8 +9,16 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, "src/main.ts"),
       name: "FloorplanUI",
-      fileName: () => "floorplan-ui.js",
       formats: ["es"],
+    },
+    rollupOptions: {
+      // The entry registers the panel as a side effect and has no public exports.
+      preserveEntrySignatures: false,
+      output: {
+        entryFileNames: "floorplan-ui.js",
+        chunkFileNames: "chunks/[name]-[hash].js",
+        inlineDynamicImports: false,
+      },
     },
     outDir: "../custom_components/floorplan_ui/frontend",
     emptyOutDir: true,

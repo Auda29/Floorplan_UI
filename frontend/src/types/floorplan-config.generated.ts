@@ -1,5 +1,6 @@
 /* AUTO-GENERATED from schema/floorplan-config.schema.json. DO NOT EDIT. */
 
+export type Background = ImageBackground | ModelBackground;
 export type ValueBinding = {
   [k: string]: unknown;
 } & {
@@ -7,7 +8,8 @@ export type ValueBinding = {
   attr?: string;
   format?: string;
 };
-export type ValueSpec = {
+export type ValueSpec = EntityValueSpec | AggregateValueSpec;
+export type EntityValueSpec = {
   [k: string]: unknown;
 } & {
   mode: "entity";
@@ -48,23 +50,42 @@ export interface Plan {
   view: {
     minZoom: number;
     maxZoom: number;
+    shadows?: boolean;
+    lighting?: boolean;
+    camera_mode?: "ortho" | "perspective";
+    /**
+     * @maxItems 20
+     */
+    camera_presets?: CameraPreset[];
   };
 }
-export interface Background {
+export interface ImageBackground {
   type: "image";
   asset_id?: string;
-  content_type?: "image/png" | "image/jpeg";
+  content_type?: "image/png" | "image/jpeg" | "image/svg+xml";
   /**
-   * Transient signed URL or portable PNG/JPEG data URL; never persisted for asset-backed images.
+   * Transient signed URL or portable PNG, JPEG or SVG data URL.
    */
   url?: string;
   width: number;
   height: number;
 }
+export interface ModelBackground {
+  type: "model";
+  asset_id?: string;
+  content_type?: "model/gltf-binary";
+  /**
+   * Transient signed URL for the GLB asset.
+   */
+  url?: string;
+  width?: number;
+  height?: number;
+  unit_scale?: number;
+}
 export interface Area {
   id: string;
   area_id: string | null;
-  shape: RectShape | PolygonShape;
+  shape: RectShape | PolygonShape | MeshShape | Anchor3DShape;
   tags: string[];
   style: AreaStyle;
 }
@@ -85,6 +106,22 @@ export interface PolygonShape {
    */
   points: number[];
 }
+export interface MeshShape {
+  type: "mesh";
+  mesh_name: string;
+  anchor?: Vec3;
+}
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
+export interface Anchor3DShape {
+  type: "anchor3d";
+  x: number;
+  y: number;
+  z: number;
+}
 export interface AreaStyle {
   fillOpacity: number;
   strokeWidth: number;
@@ -98,6 +135,7 @@ export interface Marker {
   pos: {
     x: number;
     y: number;
+    z?: number;
   };
   icon?: string;
   label_mode: "off" | "short" | "full" | "auto";
@@ -112,12 +150,22 @@ export interface Marker {
   };
   [k: string]: unknown;
 }
+export interface CameraPreset {
+  id: string;
+  name: string;
+  mode: "ortho" | "perspective";
+  position: Vec3;
+  target: Vec3;
+  zoom?: number;
+}
 export interface View {
   id: string;
   name: string;
   filters: Filters;
   area_overlay?: Overlay;
   marker_overlay?: Overlay;
+  style?: ViewStyle;
+  camera_preset_id?: string;
 }
 export interface Filters {
   domains?: string[];
@@ -132,6 +180,14 @@ export interface Overlay {
    */
   badges?: Badge[];
 }
+export interface AggregateValueSpec {
+  mode: "aggregate";
+  aggregation: "count_on" | "count_open" | "count" | "avg" | "min" | "max" | "sum";
+  domain?: string;
+  device_class?: string;
+  attr?: string;
+  format?: string;
+}
 export interface Badge {
   entity_id: string;
   when: {
@@ -139,4 +195,12 @@ export interface Badge {
   };
   icon?: string;
   label?: string;
+}
+export interface ViewStyle {
+  dim_inactive_areas?: boolean;
+  inactive_area_opacity?: number;
+  highlight_active_areas?: boolean;
+  active_area_fill?: string;
+  active_area_stroke?: string;
+  active_area_opacity?: number;
 }

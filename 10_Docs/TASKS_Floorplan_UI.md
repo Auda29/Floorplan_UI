@@ -1,35 +1,19 @@
 ## Floorplan UI – Implementation Status & Task List
 
-### Beta 4 status (2026-09-28)
+### Release 0.4.0 status (2026-11-25)
 
-Completed and exercised with real tests:
-
-- migration-before-validation hardening for malformed legacy containers
-- complete PNG/JPEG decoding, bounded upload streaming, and asset garbage collection
-- a shared versioned JSON Schema with generated TypeScript types
-- panel, renderer, upload/save/reload, touch-zoom, and Chromium production-bundle tests
-- Ruff, Python formatting, Mypy, branch-aware coverage, and pinned CI actions
-- EN/DE localization foundations, responsive `narrow` mode, pinch zoom, keyboard
-  actions, and baseline accessibility
-- successful minimum/current Home Assistant CI runs, HACS, Hassfest, and
-  reproducible production-bundle verification
-- review fixes merged in PR #7 and PR #8: save/reload consistency, asset retention,
-  portable backups up to 128 MB, authenticated image loading, touch/edit-mode
-  marker behavior, conflict reloads, Undo selection, and viewport preservation
-- native modal confirmations with correct Cancel/Enter behavior and stable
-  deletion targets; marker actions and live per-view overlays/badges
-- recovery of corrupt legacy image backgrounds with an original-configuration
-  backup, stronger schema validation, and server validation before browser decoding
-- 59 backend tests, 63 frontend tests, and seven production-bundle browser tests
-
-Remaining follow-up work:
-
-- continue behavior-preserving decomposition of the largest panel/renderer modules
-- aggregate area calculations and a consolidated warning center
-- arbitrary MDI icon rendering and entity-picker virtualization for large installations
-
-The older detailed inventory below remains as history and backlog. If a status
-conflicts with this section, this section takes precedence.
+- [x] Support mixed PNG, JPEG, sanitized SVG, and self-contained 3D GLB plans.
+  Load Three.js on demand for model navigation, camera presets, room meshes and
+  anchors, marker placement, projected overlays, and live lighting.
+- [x] Render MDI marker icons in 2D and 3D and select them in the inspector.
+- [x] Calculate HA Area aggregates and use `View.style` for per-view room styling.
+- [x] Jump from the Warning Center to affected objects in the editor.
+- [x] Virtualize the entity picker and provide contextual help, EN/DE i18n,
+  keyboard shortcuts, and Undo/Redo.
+- [x] Migrate v1–v3 configurations to schema v4. Validate SVG and GLB uploads
+  before storage and sandbox SVG responses.
+- [x] Decompose `floorplan-panel.ts` into dedicated drag, backup,
+  configuration-mutation, inspector, settings, and warning modules.
 
 ### Historical implementation snapshot (Jul 2026)
 
@@ -96,7 +80,7 @@ conflicts with this section, this section takes precedence.
   - ✅ Searchable domain/area-filtered entity palette supports drag-and-drop and dropdown placement.
   - ✅ View-scoped area primary/secondary values and conditional badges are rendered live.
   - ✅ Full JSON export and validated, confirmed JSON import are available to administrators.
-  - 🔶 Validation and import failures are surfaced inline; a consolidated warning center remains future work.
+  - ✅ Validation and import failures appear inline. The Warning Center now groups object warnings.
 
 ---
 
@@ -214,15 +198,13 @@ conflicts with this section, this section takes precedence.
     - Areas, devices, and entities with filters (domain, area, text search).
   - Entities can be added through the selector or dragged from the palette onto the canvas.
 
-  > **Current state:** The custom searchable palette renders up to 80 filtered results;
-  > virtualization or a native HA picker remains a future scalability enhancement.
+  > **Current state:** The searchable entity library virtualizes the filtered results.
 
 - [x] **Marker model and rendering**
   - `Marker` data follows the PRD model (`entity_id`, position, icon, label mode, tags, binding).
-  - Konva renders markers with domain glyphs, labels, and live values; Edit mode supports repositioning.
+  - Konva renders markers with MDI icons, labels, and live values; Edit mode supports repositioning.
 
-  > **Current state:** The integration stores icon identifiers but renders compact
-  > domain glyphs. Rendering arbitrary MDI icons remains post-alpha work.
+  > **Current state:** Choose an MDI icon in the Marker Inspector for 2D and 3D markers.
 
 - [x] **Marker configuration panel**
   - The selected-marker panel configures HA Area binding, label mode, tags, and
@@ -254,8 +236,8 @@ conflicts with this section, this section takes precedence.
 
   > **Current state:** Domain, tag and area filters are applied to marker rendering.
 
-- [ ] **View-level styling hooks**
-  - Extend config model to support optional `View.style` and integrate with rendering (e.g., dim non-selected areas).
+- [x] **View-level styling hooks**
+  - Optional `View.style` dims inactive rooms and highlights active rooms in both renderers.
 
 ---
 
@@ -295,19 +277,19 @@ conflicts with this section, this section takes precedence.
   - Introduce explicit migration steps for new schema versions.
   - Ensure old stored configs are upgraded safely on load.
 
-  > **Current state:** `FloorplanStore` explicitly migrates schema version 1 to version 2,
+  > **Current state:** `FloorplanStore` migrates schema versions 1–3 to version 4,
   > validates the migrated result, and rejects unsupported future versions.
 
 - [x] **Warning & validation UX (alpha baseline)**
   - Surface non-fatal issues (missing entities, missing images, invalid bindings) as warnings in the UI.
 
   > **Current state:** The frontend surfaces save and import validation errors inline.
-  > A consolidated warning center remains post-alpha work.
+  > The Warning Center groups object warnings and links to each affected object.
 
 - [x] **Release & versioning hygiene (HACS compatibility)**
   - Public GitHub release history starts with `v0.1.0`; documentation maintenance
     is released as `v0.1.1`.
-  - `manifest.json`, `const.py`, and `frontend/package.json` are synchronized at `0.1.1`.
+  - `manifest.json`, `const.py`, and `frontend/package.json` are synchronized at `0.4.0`.
   - HACS and Hassfest validation are required for every release commit.
   - Public release history is maintained in the repository-root `CHANGELOG.md` and
     user-facing release notes are published with each matching GitHub release.
@@ -348,16 +330,11 @@ conflicts with this section, this section takes precedence.
   > **Implementation hint:** Check `hass.user.is_admin` before showing edit controls.
   > Panel is registered with `require_admin=False` - good for view access.
 
-- [ ] **Internationalization**
-  - Prepare strings for i18n (EN/DE), aligned with HA's translation system.
+- [x] **Internationalization**
+  - The panel and editor follow Home Assistant’s English or German language setting.
 
-  > **Note:** All UI strings are currently hardcoded in English.
-  > HA uses JSON translation files - will need `translations/en.json`, `translations/de.json`.
-
-- [ ] **General UX polishing**
-  - Undo/redo (nice-to-have for v1.1).
-  - Keyboard shortcuts for common actions in the editor.
-  - Contextual tooltips and inline help.
+- [x] **General UX polishing**
+  - Undo/Redo, editor keyboard shortcuts, contextual tooltips, and inline help.
 
 - [x] **UI-based integration setup**
   - Implement a minimal `config_flow.py` so the integration can be added from the HA UI.
@@ -394,8 +371,8 @@ This table retains the earlier implementation-level commit history.
 |-----------|--------|-------------|
 | **M1: Hello Floorplan** | ✅ **COMPLETE** | `a6a6a20`, `06da594`, `a407022` |
 | **M2: Area Shapes** | ✅ **ALPHA BASELINE COMPLETE** (rectangles, polygons, resize, vertex editing, binding and styles) | `7d5a8ba`, `adc1477`, `b9d7e7d`, `5012ea1` |
-| **M3: Markers** | ✅ **ALPHA BASELINE COMPLETE** (palette, drag-and-drop, editing, live values and More-Info; arbitrary MDI rendering remains) | `5012ea1` |
-| **M4: Views** | ✅ **ALPHA BASELINE COMPLETE** (CRUD, reorder, default and filters; view styling remains) | `5012ea1` |
+| **M3: Markers** | ✅ **ALPHA BASELINE COMPLETE** (palette, drag-and-drop, editing, live values and More-Info, MDI icons) | `5012ea1` |
+| **M4: Views** | ✅ **ALPHA BASELINE COMPLETE** (CRUD, reorder, default and filters, view styling) | `5012ea1` |
 | **M5: Overlays** | ✅ **ALPHA BASELINE COMPLETE** (marker values, area overlays and conditional badges) | `5012ea1` |
 | **M6: Export/Import** | ✅ **ALPHA BASELINE COMPLETE** (export, pre-flight validation, preview, import and migrations) | `a407022`, `5012ea1` |
-| **M8: Polish** | 🔶 Partial (UI setup, authorization, tests and CI ✅; i18n, undo/redo and broader UX polish remain) | `bec8768`, `5012ea1` |
+| **M8: Polish** | ✅ UI setup, authorization, tests, CI, i18n, Undo/Redo and contextual help | `bec8768`, `5012ea1` |

@@ -20,7 +20,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _attach_asset_urls(hass: HomeAssistant, config: dict[str, Any]) -> None:
-    """Add transient signed URLs to asset-backed backgrounds."""
+    """Add transient signed URLs to asset-backed image and model backgrounds."""
     for plan in config.get("plans", []):
         background = plan.get("background", {})
         asset_id = background.get("asset_id")

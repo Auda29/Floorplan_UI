@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Marker, Plan, View } from "../types/home-assistant";
+import type { HassEntity, HassEntityRegistry, Marker, Plan, View } from "../types/home-assistant";
+import { createAnchor3DArea, createArea, createMeshArea } from "./area-config";
+import { getMdiIconPath, resolveDynamicMdiPath } from "./mdi-icons";
 
 const { MockNode } = vi.hoisted(() => {
   class MockNode {
     public readonly attrs: Record<string, unknown>;
     public readonly children: MockNode[] = [];
+    private parent: MockNode | null = null;
     public readonly handlers = new Map<
       string,
       (event: { cancelBubble: boolean; evt?: { defaultPrevented: boolean } }) => void
@@ -14,6 +17,7 @@ const { MockNode } = vi.hoisted(() => {
       this.attrs = attrs;
     }
     public add(...nodes: MockNode[]) {
+      for (const node of nodes) node.parent = this;
       this.children.push(...nodes);
     }
     public on(name: string, handler: () => void) {
@@ -23,7 +27,22 @@ const { MockNode } = vi.hoisted(() => {
       this.handlers.get(name)?.({ cancelBubble: false, evt: { defaultPrevented } });
     }
     public destroyChildren() {
-      this.children.length = 0;
+      for (const node of [...this.children]) node.destroy();
+    }
+    public destroy() {
+      this.destroyChildren();
+      if (!this.parent) return;
+      this.parent.children.splice(this.parent.children.indexOf(this), 1);
+      this.parent = null;
+    }
+    public getParent() {
+      return this.parent;
+    }
+    public getLayer() {
+      return this.parent;
+    }
+    public getClientRect() {
+      return this.position();
     }
     public batchDraw() {}
     public scale() {}
@@ -73,7 +92,13 @@ vi.mock("konva", () => ({
     Label: MockNode,
     Tag: MockNode,
     Transformer: MockNode,
+    Path: MockNode,
   },
+}));
+
+vi.mock("./mdi-icons", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./mdi-icons")>()),
+  resolveDynamicMdiPath: vi.fn(async () => null),
 }));
 
 import { refreshMarkerLiveValues, renderAreas, renderMarkers } from "./konva-renderer";
@@ -103,7 +128,7 @@ function plan(markers: Marker[]): Plan {
   };
 }
 
-function render(editMode: boolean, view?: View) {
+function render(editMode: boolean, view?: View, sourceMarker = marker()) {
   const layer = new MockNode();
   const groups = new Map<string, MockNodeInstance>();
   const onSelect = vi.fn();
@@ -111,7 +136,7 @@ function render(editMode: boolean, view?: View) {
   renderMarkers({
     layer: layer as never,
     stage: null,
-    plan: plan([marker()]),
+    plan: plan([sourceMarker]),
     view,
     states: {},
     entities: [],
@@ -122,12 +147,90 @@ function render(editMode: boolean, view?: View) {
     onActivate,
     onMove: vi.fn(),
   });
-  return { layer, group: groups.get("marker")!, onSelect, onActivate };
+  return { layer, group: groups.get(sourceMarker.id)!, groups, onSelect, onActivate };
+}
+
+function entityState(entityId: string, state: string): HassEntity {
+  return {
+    entity_id: entityId,
+    state,
+    attributes: {},
+    last_changed: "",
+    last_updated: "",
+    context: { id: "", parent_id: null, user_id: null },
+  };
 }
 
 beforeEach(() => vi.clearAllMocks());
 
 describe("Konva marker rendering", () => {
+  it("renders and refreshes centered MDI paths as a light changes state", () => {
+    const item = { ...marker(), icon: undefined };
+    const { layer, group, groups } = render(false, undefined, item);
+    expect(group.findOne(".marker-icon-path")?.attrs).toMatchObject({
+      data: getMdiIconPath("mdi:lightbulb"),
+      x: -9,
+      y: -9,
+      scale: { x: 0.75, y: 0.75 },
+      fill: "#ffffff",
+      listening: false,
+    });
+    expect(group.findOne(".marker-dot")?.attrs.radius).toBe(16);
+    refreshMarkerLiveValues({
+      layer: layer as never,
+      plan: plan([item]),
+      view: undefined,
+      states: { [item.entity_id]: entityState(item.entity_id, "on") },
+      entities: [],
+      groups: groups as never,
+    });
+    expect(group.findOne(".marker-icon-path")?.attrs.data).toBe(getMdiIconPath("mdi:lightbulb-on"));
+    expect(group.children.filter((node) => node.attrs.name === "marker-icon-path")).toHaveLength(1);
+  });
+
+  it("swaps a temporary domain glyph for a dynamically resolved path", async () => {
+    const path = "M1 1L2 2";
+    let finish!: (value: string) => void;
+    vi.mocked(resolveDynamicMdiPath).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const { layer, group } = render(false, undefined, { ...marker(), icon: "mdi:custom-icon" });
+    const draw = vi.spyOn(layer, "batchDraw");
+    expect(group.findOne(".marker-icon-glyph")?.attrs.text).toBe("L");
+    expect(group.findOne(".marker-icon-path")).toBeUndefined();
+    expect(resolveDynamicMdiPath).toHaveBeenCalledWith("mdi:custom-icon");
+    finish(path);
+    await Promise.resolve();
+    expect(group.findOne(".marker-icon-glyph")).toBeUndefined();
+    expect(group.findOne(".marker-icon-path")?.attrs.data).toBe(path);
+    expect(draw).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a dynamic icon result that arrives after a live icon change", async () => {
+    let finish!: (value: string) => void;
+    vi.mocked(resolveDynamicMdiPath).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+    );
+    const item = marker();
+    const { layer, group, groups } = render(false, undefined, { ...item, icon: "mdi:custom-icon" });
+    refreshMarkerLiveValues({
+      layer: layer as never,
+      plan: plan([item]),
+      view: undefined,
+      states: {},
+      entities: [],
+      groups: groups as never,
+    });
+    finish("M1 1L2 2");
+    await Promise.resolve();
+    expect(group.findOne(".marker-icon-path")?.attrs.data).toBe(getMdiIconPath("mdi:lightbulb"));
+    expect(group.children.filter((node) => node.attrs.name === "marker-icon-path")).toHaveLength(1);
+  });
+
   it.each([false, true])("handles touch taps in edit mode %s", (editMode) => {
     const result = render(editMode);
     result.group.trigger("tap");
@@ -241,6 +344,80 @@ describe("Konva marker rendering", () => {
 });
 
 describe("Konva area rendering", () => {
+  it("renders area aggregates and applies view styling only outside edit mode", () => {
+    const item = marker();
+    const floor = plan([item]);
+    const room = { ...createArea("room", "rect", { x: 0, y: 0 }), area_id: "living" };
+    const office = { ...createArea("office", "polygon", { x: 0, y: 0 }), area_id: "office" };
+    floor.areas = [
+      room,
+      office,
+      createMeshArea("mesh", "Kitchen"),
+      createAnchor3DArea("anchor", { x: 0, y: 0, z: 0 }),
+    ];
+    const officeSwitch: HassEntityRegistry = {
+      entity_id: "switch.office",
+      area_id: "office",
+      domain: "switch",
+      name: null,
+      icon: null,
+      device_id: null,
+    };
+    const view: View = {
+      id: "lighting",
+      name: "Lighting",
+      filters: { domains: ["light"] },
+      area_overlay: {
+        primary: { mode: "aggregate", aggregation: "count_on", format: "{value} active" },
+        secondary: {
+          mode: "aggregate",
+          aggregation: "count",
+          domain: "light",
+          format: "{value} lights",
+        },
+      },
+      style: {
+        highlight_active_areas: true,
+        active_area_fill: "#ff0000",
+        active_area_stroke: "#000000",
+        active_area_opacity: 0.8,
+        dim_inactive_areas: true,
+      },
+    };
+    const layer = new MockNode();
+    const shapes = new Map<string, MockNodeInstance>();
+    const options = {
+      layer: layer as never,
+      plan: floor,
+      view,
+      states: {
+        [item.entity_id]: entityState(item.entity_id, "on"),
+        [officeSwitch.entity_id]: entityState(officeSwitch.entity_id, "on"),
+      },
+      areas: [{ id: "living", name: "Living room" }],
+      entities: [officeSwitch],
+      selectedAreaId: null,
+      shapes: shapes as never,
+      onSelect: vi.fn(),
+      onUpdateShape: vi.fn(),
+      onRerender: vi.fn(),
+    };
+    renderAreas({ ...options, editMode: false });
+    expect([...shapes.keys()]).toEqual(["room", "office"]);
+    expect(shapes.get(room.id)?.attrs).toMatchObject({
+      fill: "#ff0000",
+      stroke: "#000000",
+      opacity: 0.8,
+    });
+    expect(shapes.get(office.id)?.attrs.opacity).toBe(0.15);
+    expect(layer.children[1].children[1].attrs.text).toBe("Living room\n1 active\n1 lights");
+    expect(layer.children[3].children[1].attrs.text).toBe("office\n1 active\n0 lights");
+
+    renderAreas({ ...options, editMode: true });
+    expect(shapes.get(room.id)?.attrs).toMatchObject({ fill: room.style.fill, opacity: 0.4 });
+    expect(shapes.get(office.id)?.attrs.opacity).toBe(0.4);
+  });
+
   it("keeps selection handles above overlapping areas and resizes in plan coordinates", () => {
     const floor = plan([]);
     const room = {

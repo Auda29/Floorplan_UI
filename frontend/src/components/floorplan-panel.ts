@@ -1,97 +1,57 @@
 /**
  * Floorplan Panel - Main HA panel component
- * Uses Lit for the panel shell and Konva for the canvas
+ * Coordinates the Lit shell and the active plan viewport.
  */
 
-import { LitElement, html } from "lit";
+import { LitElement } from "lit";
 import { property, state } from "lit/decorators.js";
-import Konva from "konva";
+import type Konva from "konva";
 import type {
   HomeAssistant,
-  FloorplanBackground,
   FloorplanConfig,
   Plan,
   AreaShape,
-  BadgeSpec,
   HassArea,
   HassEntityRegistry,
   Marker,
-  ValueSpec,
   View,
 } from "../types/home-assistant";
-import { defaultTagsForEntity, markerMatchesView } from "../lib/marker-utils";
+import { defaultTagsForEntity } from "../lib/marker-utils";
 import { createLocalizer } from "../lib/i18n";
 import {
   errorCode,
   loadFloorplanConfig,
   loadRegistry,
   saveFloorplanConfig,
-  validateFloorplanConfig,
 } from "../lib/config-api";
-import {
-  createPortableConfig,
-  fetchFloorplanImage,
-  materializeImportedImages,
-  MAX_IMAGE_FILE_BYTES,
-  MAX_PORTABLE_CONFIG_BYTES,
-  uploadFloorplanImage,
-} from "../lib/asset-api";
+import { fetchFloorplanModel } from "../lib/asset-api";
 import { ConfigSaveQueue, type SaveState, type SaveStatus } from "../lib/config-save-queue";
 import { ConfigHistory } from "../lib/config-history";
-import {
-  createStageController,
-  fitStageToContent,
-  getVisibleStageCenter,
-  type StageController,
-} from "../lib/stage-controller";
-import { createView, moveView, removeView, updateView } from "../lib/view-config";
-import { addMarker, removeMarker, updateMarker } from "../lib/marker-config";
-import {
-  addPlan,
-  createPlan,
-  removePlan,
-  renamePlan,
-  replacePlanBackground,
-} from "../lib/plan-config";
+import { addMarker, updateMarker } from "../lib/marker-config";
+import { addCameraPreset, is3DPlan } from "../lib/plan-config";
 import {
   addArea,
   createArea,
-  removeArea,
-  updateArea,
+  createAnchor3DArea,
+  createMeshArea,
   updateAreaShape,
   type AreaGeometryUpdate,
 } from "../lib/area-config";
-import {
-  areaMatchesView,
-  drawImageErrorState,
-  refreshMarkerLiveValues,
-  renderAreas,
-  renderMarkers,
-  syncCanvasInteractivity,
-} from "../lib/konva-renderer";
+import { PanelKonvaViewport } from "../lib/panel-konva-viewport";
+import type { ViewportRenderState } from "../lib/viewport-types";
 import { floorplanPanelStyles } from "./floorplan-panel.styles";
-import { type EditorTab, renderFloorplanEditor } from "./floorplan-editor";
-import { type PanelDialog, type PanelDialogResult } from "./floorplan-dialog";
+import type { EditorTab } from "./floorplan-editor";
+import { type PanelDialog } from "./floorplan-dialog";
 import "./floorplan-dialog";
+import { EntityDragController } from "../lib/panel-drag-controller";
+import { PanelEditOperations } from "../lib/panel-edit-operations";
+import { mergePanelEntities, renderPanelEditor } from "./floorplan-panel-editor";
+import { analyzeConfigDiagnostics, type ConfigDiagnostic } from "../lib/config-diagnostics";
+import type { ThreeViewportController, ThreeViewportState } from "../lib/three-viewport";
+import { renderPanelTemplate, type PlacementShape } from "./floorplan-panel-template";
 
 const LIVE_REFRESH_DELAY_MS = 500;
-const ENTITY_POINTER_DRAG_THRESHOLD_PX = 6;
-const ENTITY_TOUCH_DRAG_HOLD_MS = 250;
-
-interface EntityPointerDrag {
-  entityId: string;
-  pointerId: number;
-  pointerType: string;
-  target: HTMLElement;
-  palette: HTMLElement | null;
-  startX: number;
-  startY: number;
-  startScrollTop: number;
-  ready: boolean;
-  scrolling: boolean;
-  holdTimer: number | null;
-  active: boolean;
-}
+const fieldValue = (event: Event) => (event.target as HTMLInputElement).value;
 
 export class FloorplanPanel extends LitElement {
   @property({ attribute: false }) public hass!: HomeAssistant;
@@ -108,10 +68,12 @@ export class FloorplanPanel extends LitElement {
   @state() private _selectedMarkerId: string | null = null;
   @state() private _haAreas: HassArea[] = [];
   @state() private _haEntities: HassEntityRegistry[] = [];
-  @state() private _entityLimit = 100;
+  @state() private _entityScrollTop = 0;
+  @state() private _entityViewportHeight = 180;
+  @state() private _warningsOpen = false;
+  @state() private _cameraMode: "ortho" | "perspective" = "ortho";
   @state() private _tab: EditorTab = "entities";
-  @state() private _shape: "rect" | "polygon" | null = null;
-  private _skipEntityClick = false;
+  @state() private _shape: PlacementShape = null;
   @state() private _entityToAdd = "";
   @state() private _entitySearch = "";
   @state() private _entityDomainFilter = "";
@@ -124,15 +86,37 @@ export class FloorplanPanel extends LitElement {
   @state() private _dialog: PanelDialog | null = null;
 
   private _stage: Konva.Stage | null = null;
-  private _backgroundLayer: Konva.Layer | null = null;
-  private _areasLayer: Konva.Layer | null = null;
-  private _markersLayer: Konva.Layer | null = null;
-  private _stageController: StageController | null = null;
-  private _areaShapes: Map<string, Konva.Shape> = new Map();
-  private _markerGroups: Map<string, Konva.Group> = new Map();
+  private _konva: PanelKonvaViewport | null = null;
+  private readonly _areaShapes: Map<string, Konva.Shape> = new Map();
+  private readonly _markerGroups: Map<string, Konva.Group> = new Map();
   private _renderGeneration = 0;
   private _liveRefreshTimer: number | null = null;
-  private _entityPointerDrag: EntityPointerDrag | null = null;
+  private _threeViewport: ThreeViewportController | null = null;
+  private _pending3DFocus: { kind: "area" | "marker"; id: string } | null = null;
+  private readonly _availableMeshesByPlan = new Map<string, string[]>();
+  private readonly _drag = new EntityDragController({
+    isEnabled: () => this._editMode && this._canEdit && !!this._getCurrentPlan(),
+    getCanvasContainer: () => this._canvasContainer(),
+    onDropEntity: (id, x, y, container) => this._addMarkerAtClientPoint(id, x, y, container),
+  });
+  private readonly _edits = new PanelEditOperations({
+    hass: () => this.hass,
+    editableConfig: () => (this._canEdit ? this._config : null),
+    commit: (config) => this._commitConfig(config),
+    selectPlan: (id) => this._changePlan(id),
+    selectView: (id) => this._setView(id),
+    onReplaceBackground: (id) => {
+      this._availableMeshesByPlan.delete(id);
+      if (id === this._currentPlanId) this._clearSelection();
+    },
+    onImport: () => this._availableMeshesByPlan.clear(),
+    newPlanId: () => this._newId("plan"),
+    localize: () => this._t,
+    askText: (title, value) => this._askText(title, value),
+    confirm: (message, label, destructive) => this._askConfirm(message, label, destructive),
+    notice: (message) => this._setNotice(message),
+    error: (message) => this._setError(message),
+  });
   private _replacePlanId: string | null = null;
   private readonly _history = new ConfigHistory();
   private _dialogResolver: ((value: string | boolean | null) => void) | null = null;
@@ -153,11 +137,6 @@ export class FloorplanPanel extends LitElement {
     event.preventDefault();
     event.returnValue = "";
   };
-  private readonly _entityPointerMove = (event: PointerEvent) => this._onEntityPointerMove(event);
-  private readonly _entityPointerUp = (event: PointerEvent) => this._onEntityPointerUp(event);
-  private readonly _entityPointerCancel = (event: PointerEvent) =>
-    this._onEntityPointerCancel(event);
-
   private get _canEdit(): boolean {
     return this.hass?.user?.is_admin === true;
   }
@@ -171,9 +150,7 @@ export class FloorplanPanel extends LitElement {
   async connectedCallback() {
     super.connectedCallback();
     window.addEventListener("beforeunload", this._beforeUnload);
-    window.addEventListener("pointermove", this._entityPointerMove, { passive: false });
-    window.addEventListener("pointerup", this._entityPointerUp);
-    window.addEventListener("pointercancel", this._entityPointerCancel);
+    this._drag.attach();
     await this._loadConfig();
     if (this._canEdit) {
       await this._loadRegistry();
@@ -183,20 +160,20 @@ export class FloorplanPanel extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener("beforeunload", this._beforeUnload);
-    window.removeEventListener("pointermove", this._entityPointerMove);
-    window.removeEventListener("pointerup", this._entityPointerUp);
-    window.removeEventListener("pointercancel", this._entityPointerCancel);
-    this._finishEntityPointerDrag();
+    this._drag.detach();
     this._resolveDialog(null);
     if (this._liveRefreshTimer !== null) {
       window.clearTimeout(this._liveRefreshTimer);
       this._liveRefreshTimer = null;
     }
     this._destroyStage();
+    this._destroyThreeViewport();
   }
 
   private async _loadConfig() {
     this._destroyStage();
+    this._destroyThreeViewport();
+    this._availableMeshesByPlan.clear();
     this._loading = true;
     this._loadFailed = false;
     try {
@@ -206,15 +183,9 @@ export class FloorplanPanel extends LitElement {
       this._saveConflict = false;
       this._error = "";
       this._notice = "";
-      this._selectedAreaId = null;
-      this._selectedMarkerId = null;
-      this._currentPlanId = this._config.plans[0]?.plan_id ?? null;
-      if (
-        this._config.default_view &&
-        this._config.views.some((view) => view.id === this._config?.default_view)
-      ) {
-        this._currentView = this._config.default_view;
-      }
+      this._changePlan(this._config.plans[0]?.plan_id ?? null);
+      const defaultView = this._config.views.find(({ id }) => id === this._config?.default_view);
+      if (defaultView) this._currentView = defaultView.id;
       this._reconcileSelection();
     } catch {
       this._config = null;
@@ -232,7 +203,7 @@ export class FloorplanPanel extends LitElement {
   }
 
   private _commitConfig(config: FloorplanConfig, recordHistory = true): Promise<boolean> {
-    if (!this._canEdit) return Promise.resolve(false);
+    if (!this._canEdit || config === this._config) return Promise.resolve(false);
     if (recordHistory && this._config) {
       this._history.record(this._config);
     }
@@ -246,10 +217,7 @@ export class FloorplanPanel extends LitElement {
     const previous = this._history.undo(this._config);
     if (!previous) return;
     void this._commitConfig(previous, false);
-    this._selectedAreaId = null;
-    this._selectedMarkerId = null;
-    this._renderFloorplan();
-    this.requestUpdate();
+    this._clearSelection();
   }
 
   private _redo(): void {
@@ -257,10 +225,7 @@ export class FloorplanPanel extends LitElement {
     const next = this._history.redo(this._config);
     if (!next) return;
     void this._commitConfig(next, false);
-    this._selectedAreaId = null;
-    this._selectedMarkerId = null;
-    this._renderFloorplan();
-    this.requestUpdate();
+    this._clearSelection();
   }
 
   private _onSaveStatus(status: SaveStatus): void {
@@ -271,53 +236,86 @@ export class FloorplanPanel extends LitElement {
       this._error = "";
       this._saveConflict = false;
     }
-    if (status.state !== "failed") return;
-    if (errorCode(status.error) === "config_conflict") {
-      this._saveConflict = true;
-      this._setError(this._t("panel.conflict"));
-      return;
+    if (status.state === "failed") {
+      this._saveConflict = errorCode(status.error) === "config_conflict";
+      this._setError(this._t(this._saveConflict ? "panel.conflict" : "panel.saveFailed"));
     }
-    this._saveConflict = false;
-    this._setError(this._t("panel.saveFailed"));
   }
 
-  protected updated(changedProps: Map<string, unknown>) {
-    if (changedProps.has("_loading") && !this._loading && !this._stage && this.isConnected) {
-      this._initializeStage();
-    }
-
-    if (changedProps.has("_currentPlanId")) {
-      this._shape = null;
-      this._entityToAdd = "";
-      this._selectedAreaId = null;
-      this._selectedMarkerId = null;
-      this._renderFloorplan();
-    }
-
-    if (changedProps.has("_currentView") && this._stage) {
-      this._renderAreas(this._getCurrentPlan());
-      this._renderMarkers(this._getCurrentPlan());
-    }
-
-    if (changedProps.has("hass")) {
-      if (!this._canEdit && this._editMode) {
-        this._editMode = false;
-        this._selectedAreaId = null;
-        this._selectedMarkerId = null;
-        this._renderAreas(this._getCurrentPlan());
-        this._renderMarkers(this._getCurrentPlan());
-        this._syncCanvasInteractivity();
-      }
+  protected updated(changes: Map<string, unknown>) {
+    if (changes.has("hass")) {
+      if (!this._canEdit && this._editMode) this._toggleEditMode();
       this._scheduleLiveRefresh();
     }
+    if (this._loading || !this.isConnected) return;
+    const oldConfig = changes.has("_config")
+      ? (changes.get("_config") as FloorplanConfig | null)
+      : this._config;
+    const oldPlan = oldConfig?.plans.find(({ plan_id }) => plan_id === this._currentPlanId);
+    const plan = this._getCurrentPlan();
+    if (
+      changes.has("_loading") ||
+      changes.has("_currentPlanId") ||
+      oldPlan?.background !== plan?.background
+    ) {
+      void this._renderFloorplan();
+      return;
+    }
+
+    const oldViewId = (changes.get("_currentView") as string | undefined) ?? this._currentView;
+    const oldView = oldConfig?.views.find(({ id }) => id === oldViewId);
+    const view = this._getCurrentView();
+    const registryChanged = changes.has("_haAreas") || changes.has("_haEntities");
+    const modeChanged = changes.has("_editMode");
+    const selectionChanged = changes.has("_selectedAreaId") || changes.has("_selectedMarkerId");
+    if (this._threeViewport) {
+      if (
+        oldPlan !== plan ||
+        oldView !== view ||
+        modeChanged ||
+        registryChanged ||
+        selectionChanged ||
+        changes.has("_shape") ||
+        changes.has("_entityToAdd")
+      ) {
+        this._sync3DState();
+      }
+      if (plan?.view.camera_mode !== oldPlan?.view.camera_mode) {
+        this._setCameraMode(plan?.view.camera_mode ?? "ortho");
+      }
+      if (
+        view?.camera_preset_id &&
+        (changes.has("_currentView") || view.camera_preset_id !== oldView?.camera_preset_id)
+      ) {
+        this._applyCameraPreset(view.camera_preset_id);
+      }
+      return;
+    }
+    const state = this._getCanvasState();
+    if (oldPlan?.markers !== plan?.markers || oldView !== view || modeChanged || registryChanged) {
+      this._konva?.renderMarkers(state);
+    }
+    if (
+      oldPlan?.areas !== plan?.areas ||
+      oldPlan?.markers !== plan?.markers ||
+      oldView !== view ||
+      modeChanged ||
+      registryChanged ||
+      changes.has("_selectedAreaId")
+    ) {
+      this._konva?.renderAreas(state);
+    }
+    if (selectionChanged || modeChanged) this._konva?.syncCanvasInteractivity(state);
   }
 
   private _scheduleLiveRefresh() {
     if (this._liveRefreshTimer !== null) return;
     this._liveRefreshTimer = window.setTimeout(() => {
       this._liveRefreshTimer = null;
-      this._refreshMarkerLiveValues();
-      if (!this._editMode) this._renderAreas(this._getCurrentPlan());
+      const state = this._getCanvasState();
+      this._konva?.refreshMarkerLiveValues(state);
+      if (!this._editMode) this._konva?.renderAreas(state);
+      this._sync3DState();
     }, LIVE_REFRESH_DELAY_MS);
   }
 
@@ -340,9 +338,6 @@ export class FloorplanPanel extends LitElement {
       confirmLabel: this._t("dialog.save"),
       destructive: false,
     };
-    void this.updateComplete.then(() => {
-      this.renderRoot.querySelector<HTMLInputElement>(".dialog input")?.focus();
-    });
     return new Promise((resolve) => {
       this._dialogResolver = (result) => resolve(typeof result === "string" ? result : null);
     });
@@ -382,50 +377,48 @@ export class FloorplanPanel extends LitElement {
     if (!(await this._askConfirm(this._t("dialog.reloadMessage"), this._t("dialog.reload"), true)))
       return;
     await this._loadConfig();
-    this._renderFloorplan();
   }
 
   private _initializeStage() {
-    const container = this.renderRoot.querySelector(".canvas-wrapper") as HTMLDivElement;
+    const container = this.renderRoot.querySelector<HTMLDivElement>(".canvas-wrapper");
     if (!container) {
       this._setError(this._t("panel.canvasInitError"));
       return;
     }
-
-    this._stageController = createStageController(container, {
+    this._konva = new PanelKonvaViewport(container, this._areaShapes, this._markerGroups, {
       isEditing: () => this._editMode,
-      getZoomLimits: () => {
-        const plan = this._getCurrentPlan();
-        return {
-          minZoom: plan?.view.minZoom ?? 0.1,
-          maxZoom: plan?.view.maxZoom ?? 5,
-        };
-      },
-      onEmptyCanvasClick: () => {
-        this._selectedAreaId = null;
-        this._selectedMarkerId = null;
-        this._renderAreas(this._getCurrentPlan());
-        this._syncCanvasInteractivity();
-      },
+      getPlan: () => this._getCurrentPlan(),
+      getState: () => this._getCanvasState(),
+      select: (kind, id) => this._selectCanvasObject(kind, id),
+      activate: (marker) => void this._activateMarker(marker),
+      move: (id, pos) => this._updateMarker(id, { pos }),
+      resize: (id, updates) => this._updateAreaShape(id, updates),
+      onEmptyCanvasClick: () => this._clearSelection(),
+      onImageError: (kind) =>
+        this._setError(
+          this._t(kind === "load" ? "panel.imageLoadError" : "panel.imageRenderError")
+        ),
     });
-    this._stage = this._stageController.stage;
-    this._backgroundLayer = this._stageController.backgroundLayer;
-    this._areasLayer = this._stageController.areasLayer;
-    this._markersLayer = this._stageController.markersLayer;
+    this._stage = this._konva.stage;
+  }
 
-    this._renderFloorplan();
+  private _getCanvasState(): ViewportRenderState {
+    return {
+      plan: this._getCurrentPlan(),
+      view: this._getCurrentView(),
+      states: this.hass.states,
+      entities: this._haEntities,
+      areas: this._haAreas,
+      editMode: this._editMode,
+      selectedAreaId: this._selectedAreaId,
+      selectedMarkerId: this._selectedMarkerId,
+    };
   }
 
   private _destroyStage() {
-    this._renderGeneration += 1;
-    this._stageController?.destroy();
-    this._stageController = null;
+    this._konva?.destroy();
+    this._konva = null;
     this._stage = null;
-    this._backgroundLayer = null;
-    this._areasLayer = null;
-    this._markersLayer = null;
-    this._areaShapes.clear();
-    this._markerGroups.clear();
   }
 
   private _getCurrentPlan(): Plan | null {
@@ -439,213 +432,157 @@ export class FloorplanPanel extends LitElement {
       this._selectedAreaId = null;
       this._selectedMarkerId = null;
     }
+    const plan = this._getCurrentPlan();
+    if (this._selectedAreaId && !plan?.areas.some(({ id }) => id === this._selectedAreaId)) {
+      this._selectedAreaId = null;
+    }
+    if (this._selectedMarkerId && !plan?.markers.some(({ id }) => id === this._selectedMarkerId)) {
+      this._selectedMarkerId = null;
+    }
     if (!this._config.views.some((view) => view.id === this._currentView)) {
       this._currentView = this._config.default_view ?? this._config.views[0]?.id ?? "all";
     }
   }
 
-  private _renderFloorplan() {
-    if (!this._stage || !this._backgroundLayer) return;
-
-    const generation = ++this._renderGeneration;
-
-    this._backgroundLayer.destroyChildren();
-    this._areasLayer?.destroyChildren();
-    this._markersLayer?.destroyChildren();
-    this._areaShapes.clear();
-    this._markerGroups.clear();
-
+  private async _renderFloorplan() {
     const plan = this._getCurrentPlan();
-    const stageWidth = this._stage.width();
-    const stageHeight = this._stage.height();
-
-    if (plan && (plan.background?.asset_id || plan.background?.url)) {
-      this._renderAreas(plan);
-      this._renderMarkers(plan);
-
-      // Load background image
-      const imageObj = new Image();
-      let objectUrl: string | undefined;
-      imageObj.onload = () => {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        if (generation !== this._renderGeneration || plan.plan_id !== this._currentPlanId) {
-          return;
-        }
-        const img = new Konva.Image({
-          x: 0,
-          y: 0,
-          image: imageObj,
-          width: plan.background.width || imageObj.width,
-          height: plan.background.height || imageObj.height,
+    if (plan?.background.type === "model") {
+      this._destroyStage();
+      this._destroyThreeViewport();
+      const generation = this._renderGeneration;
+      const container = this.renderRoot.querySelector<HTMLDivElement>(".canvas-wrapper");
+      if (!container) return;
+      const background = plan.background;
+      this._availableMeshesByPlan.delete(plan.plan_id);
+      const isCurrent = () =>
+        generation === this._renderGeneration &&
+        this.isConnected &&
+        this._currentPlanId === plan.plan_id &&
+        this._getCurrentPlan()?.background === background;
+      try {
+        const { createThreeViewport } = await import("../lib/three-viewport");
+        if (!isCurrent()) return;
+        const cameraMode = this._getCurrentPlan()?.view.camera_mode ?? "ortho";
+        this._cameraMode = cameraMode;
+        const controller = createThreeViewport(container, {
+          ...this._get3DState(),
+          loadModelBuffer: () => fetchFloorplanModel(this.hass, background),
+          cameraMode,
+          cameraPreset: this._getCurrentView()?.camera_preset_id,
+          onPlaceMarker: (id, { x, y, z }) => this._addMarkerAt(id, { x, y, z }),
+          onSelectMarker: (id) => this._selectCanvasObject("marker", id),
+          onMoveMarker: (id, pos) => this._updateMarker(id, { pos }),
+          onActivateMarker: (marker) => void this._activateMarker(marker),
+          onPickMesh: (name, anchor) =>
+            this._addDrawnArea(createMeshArea(this._newId("area"), name, anchor)),
+          onPlaceAnchor: (pos) => this._addDrawnArea(createAnchor3DArea(this._newId("area"), pos)),
+          onSelectArea: (id) => this._selectCanvasObject("area", id),
+          onEmptyCanvasClick: () => this._clearSelection(),
+          onError: () => {
+            if (isCurrent()) this._setError(this._t("panel.modelLoadError"));
+          },
         });
-        this._backgroundLayer!.add(img);
-        try {
-          this._backgroundLayer!.batchDraw();
-          this._fitToScreen(img.width(), img.height());
-        } catch {
-          this._backgroundLayer!.destroyChildren();
-          this._drawImageErrorState(stageWidth, stageHeight);
-          this._setError(this._t("panel.imageRenderError"));
+        this._threeViewport = controller;
+        if ((await controller.ready) && isCurrent()) {
+          this._availableMeshesByPlan.set(plan.plan_id, controller.getAvailableMeshes());
+          this._cameraMode = controller.getCameraPreset()?.mode ?? this._cameraMode;
+          if (this._pending3DFocus) {
+            if (this._pending3DFocus.kind === "area") {
+              controller.focusArea(this._pending3DFocus.id);
+            } else {
+              controller.focusMarker(this._pending3DFocus.id);
+            }
+          }
+          this._pending3DFocus = null;
+          this.requestUpdate();
         }
-      };
-      const onError = () => {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        if (generation !== this._renderGeneration) return;
-        this._backgroundLayer!.destroyChildren();
-        this._drawImageErrorState(stageWidth, stageHeight);
-        this._setError(this._t("panel.imageLoadError"));
-      };
-      imageObj.onerror = onError;
-      void fetchFloorplanImage(this.hass, plan.background)
-        .then((image) => {
-          if (generation !== this._renderGeneration) return;
-          objectUrl = URL.createObjectURL(image);
-          imageObj.src = objectUrl;
-        })
-        .catch(onError);
-    } else if (plan) {
-      // No background image but areas exist
-      this._renderAreas(plan);
-      this._renderMarkers(plan);
+      } catch {
+        if (isCurrent()) this._setError(this._t("panel.modelLoadError"));
+      }
+      return;
     }
-
-    this._backgroundLayer.batchDraw();
-    this._areasLayer?.batchDraw();
-    this._markersLayer?.batchDraw();
+    this._destroyThreeViewport();
+    if (!this._stage) this._initializeStage();
+    this._konva?.renderPlan(this.hass, this._getCanvasState());
   }
 
-  private _fitToScreen(imgWidth: number, imgHeight: number) {
-    if (!this._stage) return;
-    fitStageToContent(this._stage, imgWidth, imgHeight, this._getCurrentPlan()?.view);
+  private _destroyThreeViewport() {
+    this._renderGeneration += 1;
+    this._threeViewport?.destroy();
+    this._threeViewport = null;
+  }
+
+  private _get3DState(): ThreeViewportState {
+    const { plan, areas, ...state } = this._getCanvasState();
+    return {
+      ...state,
+      markers: plan?.markers,
+      areas: plan?.areas,
+      hassAreas: areas,
+      shadows: plan?.view.shadows ?? false,
+      lighting: plan?.view.lighting ?? true,
+      camera_presets: plan?.view.camera_presets,
+      meshPickMode: this._shape === "mesh",
+      anchorPickMode: this._shape === "anchor3d",
+      armedEntityId: this._entityToAdd || null,
+    };
+  }
+
+  private _sync3DState() {
+    this._threeViewport?.update(this._get3DState());
   }
 
   private _fitCurrentPlan() {
     const plan = this._getCurrentPlan();
-    if (plan) this._fitToScreen(plan.background.width, plan.background.height);
+    if (this._threeViewport) this._threeViewport.fit();
+    else if (plan?.background.type === "image")
+      this._konva?.fitToScreen(plan.background.width, plan.background.height);
   }
 
   private _zoomBy(factor: number) {
-    const stage = this._stage;
-    const plan = this._getCurrentPlan();
-    if (!stage || !plan) return;
-    const center = getVisibleStageCenter(stage);
-    const scale = Math.min(plan.view.maxZoom, Math.max(plan.view.minZoom, stage.scaleX() * factor));
-    stage.scale({ x: scale, y: scale });
-    stage.position({
-      x: stage.width() / 2 - center.x * scale,
-      y: stage.height() / 2 - center.y * scale,
-    });
+    if (this._threeViewport) {
+      if (factor > 1) this._threeViewport.zoomIn();
+      else this._threeViewport.zoomOut();
+      return;
+    }
+    this._konva?.zoomBy(factor);
   }
 
   private _toggleEditMode() {
-    if (!this._canEdit) return;
+    if (!this._canEdit && !this._editMode) return;
     this._switchTab("entities");
     this._editMode = !this._editMode;
     if (!this._editMode) {
-      this._finishEntityPointerDrag();
-      this._selectedAreaId = null;
-      this._selectedMarkerId = null;
+      this._drag.cancel();
+      this._warningsOpen = false;
+      this._clearSelection();
     }
-    this._renderAreas(this._getCurrentPlan());
-    this._renderMarkers(this._getCurrentPlan());
-    this._syncCanvasInteractivity();
   }
 
-  private _selectPlan(e: Event) {
-    if (!this._config) return;
-    const select = e.target as HTMLSelectElement;
-    const planId = select.value || null;
+  private _selectPlan(event: Event) {
+    this._changePlan(fieldValue(event) || null);
+  }
+
+  private _changePlan(planId: string | null) {
     this._switchTab("entities");
+    this._clearSelection();
     this._currentPlanId = planId;
   }
 
-  private async _renameCurrentPlan() {
-    if (!this._canEdit || !this._config || !this._currentPlanId) return;
-    const planId = this._currentPlanId;
-    const plan = this._config.plans.find((candidate) => candidate.plan_id === planId);
-    if (!plan) return;
-
-    const newName = await this._askText(this._t("dialog.renamePlan"), plan.name);
-    if (!newName) return;
-
-    const trimmed = newName.trim();
-    if (!trimmed || trimmed === plan.name) return;
-
-    void this._commitConfig(renamePlan(this._config, planId, trimmed));
-  }
-
-  private async _deleteCurrentPlan() {
-    if (!this._canEdit || !this._config || !this._currentPlanId) return;
-    const planId = this._currentPlanId;
-    if (
-      !(await this._askConfirm(
-        this._t("dialog.deletePlanMessage"),
-        this._t("editor.deletePlan"),
-        true
-      ))
-    )
-      return;
-
-    const result = removePlan(this._config, planId);
-    if (!result) return;
-    void this._commitConfig(result.config);
-    this._currentPlanId = result.nextPlanId;
-
-    this._renderFloorplan();
-  }
-
-  private _renderAreas(plan: Plan | null) {
-    if (!this._areasLayer) return;
-    renderAreas({
-      layer: this._areasLayer,
-      plan,
-      view: this._getCurrentView(),
-      states: this.hass.states,
-      areas: this._haAreas,
-      editMode: this._editMode,
-      selectedAreaId: this._selectedAreaId,
-      shapes: this._areaShapes,
-      onSelect: (areaId) => this._onAreaSelected(areaId),
-      onUpdateShape: (areaId, updates) => this._updateAreaShape(areaId, updates),
-      onRerender: () => this._renderAreas(this._getCurrentPlan()),
-    });
-    this._syncCanvasInteractivity();
-  }
-
-  private _syncCanvasInteractivity() {
-    syncCanvasInteractivity({
-      areasLayer: this._areasLayer,
-      markersLayer: this._markersLayer,
-      plan: this._getCurrentPlan(),
-      editMode: this._editMode,
-      selectedAreaId: this._selectedAreaId,
-      selectedMarkerId: this._selectedMarkerId,
-      areaShapes: this._areaShapes,
-      markerGroups: this._markerGroups,
-    });
-  }
-
-  private _drawImageErrorState(stageWidth: number, stageHeight: number) {
-    if (this._backgroundLayer) {
-      drawImageErrorState(this._backgroundLayer, stageWidth, stageHeight);
-    }
-  }
-
-  private _onAreaSelected(areaId: string) {
-    this._switchTab("inspector");
-    this._selectedAreaId = areaId;
+  private _clearSelection() {
+    this._selectedAreaId = null;
     this._selectedMarkerId = null;
-    this._renderAreas(this._getCurrentPlan());
-    this._syncCanvasInteractivity();
+    this._pending3DFocus = null;
   }
 
   private _switchTab(tab: EditorTab) {
+    if (tab !== this._tab) this._resetEntityScroll();
     this._shape = null;
     this._entityToAdd = "";
     this._tab = tab;
   }
 
-  private _armPlacement(shape: "rect" | "polygon" | null, entity = "") {
+  private _armPlacement(shape: PlacementShape, entity = "") {
     this._shape = shape;
     this._entityToAdd = entity;
     void this.updateComplete.then(() =>
@@ -657,33 +594,34 @@ export class FloorplanPanel extends LitElement {
 
   private _place(event: MouseEvent) {
     if (!this._editMode || !this._canEdit) return;
-    const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    const point =
-      event.detail && this._stage
-        ? this._stage
-            .getAbsoluteTransform()
-            .copy()
-            .invert()
-            .point({ x: event.clientX - bounds.left, y: event.clientY - bounds.top })
-        : this._getVisibleCanvasCenter();
-    if (this._shape) this._addAreaShape(this._shape, point);
-    else if (this._entityToAdd) this._addMarkerAt(this._entityToAdd, point);
+    if (is3DPlan(this._getCurrentPlan())) {
+      const surface = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const hit = this._threeViewport?.raycastClientPoint(
+        event.detail ? event.clientX : surface.left + surface.width / 2,
+        event.detail ? event.clientY : surface.top + surface.height / 2
+      );
+      if (!hit) return;
+      const { x, y, z } = hit;
+      if (this._shape === "anchor3d")
+        this._addDrawnArea(createAnchor3DArea(this._newId("area"), { x, y, z }));
+      else if (this._entityToAdd) this._addMarkerAt(this._entityToAdd, { x, y, z });
+      this._canvasContainer()?.focus({ preventScroll: true });
+      return;
+    }
+    const point = (event.detail
+      ? this._konva?.clientPoint(event.clientX, event.clientY)
+      : this._konva?.center()) ?? { x: 0, y: 0 };
+    if (this._shape === "rect" || this._shape === "polygon") {
+      this._addDrawnArea(createArea(this._newId("area"), this._shape, point));
+    } else if (this._entityToAdd) this._addMarkerAt(this._entityToAdd, point);
     this._canvasContainer()?.focus({ preventScroll: true });
   }
 
-  private _addAreaShape(type: "rect" | "polygon", point: { x: number; y: number }) {
-    if (!this._canEdit || !this._config) return;
+  private _addDrawnArea(area: AreaShape) {
     const plan = this._getCurrentPlan();
-    if (!plan) return;
-
-    const id = this._newId("area");
-    const newArea = createArea(id, type, point);
-    void this._commitConfig(addArea(this._config, plan.plan_id, newArea));
-
-    this._switchTab("inspector");
-    this._selectedAreaId = id;
-    this._selectedMarkerId = null;
-    this._renderAreas(this._getCurrentPlan());
+    if (!this._canEdit || !this._editMode || !this._config || !plan) return;
+    void this._commitConfig(addArea(this._config, plan.plan_id, area));
+    this._selectCanvasObject("area", area.id);
   }
 
   private _updateAreaShape(areaId: string, updates: AreaGeometryUpdate) {
@@ -696,136 +634,22 @@ export class FloorplanPanel extends LitElement {
 
   private async _loadRegistry() {
     if (!this._canEdit) return;
-    const entities = new Map<string, HassEntityRegistry>();
-    for (const state of Object.values(this.hass.states)) {
-      const { friendly_name: name, icon } = state.attributes;
-      entities.set(state.entity_id, {
-        entity_id: state.entity_id,
-        name: typeof name === "string" ? name : null,
-        icon: typeof icon === "string" ? icon : null,
-        domain: state.entity_id.split(".", 1)[0],
-        area_id: null,
-        device_id: null,
-      });
-    }
+    let entities: HassEntityRegistry[] = [];
     try {
-      const result = await loadRegistry(this.hass);
-      this._haAreas = result.areas;
-      for (const entry of result.entities) {
-        const state = entities.get(entry.entity_id);
-        entities.set(entry.entity_id, {
-          ...entry,
-          name: entry.name ?? state?.name ?? null,
-          icon: entry.icon ?? state?.icon ?? null,
-        });
-      }
+      const registry = await loadRegistry(this.hass);
+      ({ areas: this._haAreas, entities } = registry);
     } catch {
       this._haAreas = [];
       this._setError(this._t("panel.registryLoadError"));
     }
-    this._haEntities = [...entities.values()].sort((left, right) =>
-      left.entity_id.localeCompare(right.entity_id)
-    );
+    this._haEntities = mergePanelEntities(this.hass.states, entities);
   }
 
-  private _getSelectedArea(): AreaShape | null {
-    if (!this._config || !this._selectedAreaId) return null;
-    const plan = this._getCurrentPlan();
-    if (!plan) return null;
-    return (plan.areas ?? []).find((a) => a.id === this._selectedAreaId) ?? null;
+  private _deleteSelectedArea() {
+    return this._edits.deleteObject("area", this._getCurrentPlan(), this._selectedAreaId);
   }
 
-  private _onBindAreaChange(e: Event) {
-    if (!this._canEdit || !this._config || !this._selectedAreaId) return;
-    const select = e.target as HTMLSelectElement;
-    const plan = this._getCurrentPlan();
-    if (!plan) return;
-
-    void this._commitConfig(
-      updateArea(this._config, plan.plan_id, this._selectedAreaId, (area) => ({
-        ...area,
-        area_id: select.value,
-      }))
-    );
-    this._renderAreas(this._getCurrentPlan());
-  }
-
-  private _onAreaTagsChange(event: Event) {
-    const area = this._getSelectedArea();
-    const plan = this._getCurrentPlan();
-    if (!area || !plan || !this._config) return;
-    const tags = (event.target as HTMLInputElement).value
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    void this._commitConfig(
-      updateArea(this._config, plan.plan_id, area.id, (candidate) => ({
-        ...candidate,
-        tags: [...new Set(tags)],
-      }))
-    );
-    this._renderAreas(this._getCurrentPlan());
-  }
-
-  private async _deleteSelectedArea() {
-    if (!this._canEdit || !this._config || !this._selectedAreaId) return;
-    const areaId = this._selectedAreaId;
-    const plan = this._getCurrentPlan();
-    if (!plan) return;
-    if (
-      !(await this._askConfirm(
-        this._t("dialog.deleteAreaMessage"),
-        this._t("editor.deleteArea"),
-        true
-      ))
-    )
-      return;
-
-    void this._commitConfig(removeArea(this._config, plan.plan_id, areaId));
-
-    this._selectedAreaId = null;
-    this._renderFloorplan();
-  }
-
-  private _renderMarkers(plan: Plan | null) {
-    if (!this._markersLayer) return;
-    renderMarkers({
-      layer: this._markersLayer,
-      stage: this._stage,
-      plan,
-      view: this._getCurrentView(),
-      states: this.hass.states,
-      entities: this._haEntities,
-      editMode: this._editMode,
-      selectedMarkerId: this._selectedMarkerId,
-      groups: this._markerGroups,
-      onSelect: (markerId) => this._selectCanvasObject("marker", markerId),
-      onActivate: (marker) => void this._activateMarker(marker),
-      onMove: (markerId, position) => this._updateMarker(markerId, { pos: position }),
-    });
-  }
-
-  private _refreshMarkerLiveValues() {
-    const plan = this._getCurrentPlan();
-    if (!plan || !this._markersLayer) return;
-    refreshMarkerLiveValues({
-      layer: this._markersLayer,
-      plan,
-      view: this._getCurrentView(),
-      states: this.hass.states,
-      entities: this._haEntities,
-      groups: this._markerGroups,
-    });
-  }
-
-  private _getSelectedMarker(): Marker | null {
-    if (!this._selectedMarkerId) return null;
-    return (
-      this._getCurrentPlan()?.markers.find((marker) => marker.id === this._selectedMarkerId) ?? null
-    );
-  }
-
-  private _addMarkerAt(entityId: string, position: { x: number; y: number }) {
+  private _addMarkerAt(entityId: string, position: Marker["pos"]) {
     if (!this._canEdit || !this._config) return;
     const plan = this._getCurrentPlan();
     if (!plan) return;
@@ -841,7 +665,7 @@ export class FloorplanPanel extends LitElement {
       entity_id: entityId,
       area_id: registryEntry?.area_id ?? null,
       pos: position,
-      icon: registryEntry?.icon ?? "mdi:circle",
+      icon: registryEntry?.icon ?? undefined,
       label_mode: "auto",
       tags: defaultTagsForEntity(entityId),
       bind: { primary: { source: "state" } },
@@ -849,163 +673,10 @@ export class FloorplanPanel extends LitElement {
 
     void this._commitConfig(addMarker(this._config, plan.plan_id, marker));
     this._selectCanvasObject("marker", marker.id);
-    this._entityToAdd = "";
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private _onCanvasDragOver(event: DragEvent) {
-    if (!this._editMode || !this._getCurrentPlan()) return;
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-    (event.currentTarget as HTMLElement).classList.add("drag-target");
-  }
-
-  private _onCanvasDragLeave(event: DragEvent) {
-    (event.currentTarget as HTMLElement).classList.remove("drag-target");
-  }
-
-  private _onCanvasDrop(event: DragEvent) {
-    event.preventDefault();
-    const container = event.currentTarget as HTMLElement;
-    container.classList.remove("drag-target");
-    if (!this._editMode || !this._stage) return;
-    const entityId =
-      event.dataTransfer?.getData("application/x-floorplan-entity") ||
-      event.dataTransfer?.getData("text/plain");
-    if (!entityId) return;
-
-    this._addMarkerAtClientPoint(entityId, event.clientX, event.clientY, container);
-  }
-
-  private _onEntityDragStart(entityId: string, event: DragEvent) {
-    if (!event.dataTransfer) return;
-    this._finishEntityPointerDrag();
-    event.dataTransfer.setData("application/x-floorplan-entity", entityId);
-    event.dataTransfer.setData("text/plain", entityId);
-    event.dataTransfer.effectAllowed = "copy";
-  }
-
-  private _onEntityPointerDown(entityId: string, event: PointerEvent) {
-    if (!this._editMode || !this._getCurrentPlan() || !event.isPrimary || event.button !== 0) {
-      return;
-    }
-    this._finishEntityPointerDrag();
-    this._skipEntityClick = false;
-    const target = event.currentTarget as HTMLElement;
-    const palette = target.closest<HTMLElement>(".entity-palette");
-    this._entityPointerDrag = {
-      entityId,
-      pointerId: event.pointerId,
-      pointerType: event.pointerType,
-      target,
-      palette,
-      startX: event.clientX,
-      startY: event.clientY,
-      startScrollTop: palette?.scrollTop ?? 0,
-      ready: event.pointerType !== "touch",
-      scrolling: false,
-      holdTimer: null,
-      active: false,
-    };
-    if (event.pointerType === "touch") {
-      const pointerId = event.pointerId;
-      this._entityPointerDrag.holdTimer = window.setTimeout(() => {
-        const drag = this._entityPointerDrag;
-        if (drag?.pointerId === pointerId && !drag.scrolling) drag.ready = true;
-      }, ENTITY_TOUCH_DRAG_HOLD_MS);
-    }
-    try {
-      target.setPointerCapture(event.pointerId);
-    } catch {
-      // Synthetic tests and older WebViews may not expose native pointer capture.
-    }
-  }
-
-  private _onEntityPointerMove(event: PointerEvent) {
-    const drag = this._entityPointerDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
-    const distance = Math.hypot(deltaX, deltaY);
-    if (drag.pointerType === "touch" && !drag.ready) {
-      event.preventDefault();
-      if (distance >= ENTITY_POINTER_DRAG_THRESHOLD_PX) {
-        drag.scrolling = true;
-        if (drag.holdTimer !== null) {
-          window.clearTimeout(drag.holdTimer);
-          drag.holdTimer = null;
-        }
-        if (drag.palette) drag.palette.scrollTop = drag.startScrollTop - deltaY;
-      }
-      return;
-    }
-
-    if (!drag.active && distance >= ENTITY_POINTER_DRAG_THRESHOLD_PX) {
-      drag.active = true;
-    }
-    if (!drag.active) return;
-
-    event.preventDefault();
-    const canvas = this._canvasContainer();
-    canvas?.classList.toggle(
-      "drag-target",
-      this._clientPointIsInside(canvas, event.clientX, event.clientY)
-    );
-  }
-
-  private _onEntityPointerUp(event: PointerEvent) {
-    const drag = this._entityPointerDrag;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-
-    const canvas = this._canvasContainer();
-    this._skipEntityClick = drag.active || drag.scrolling;
-    const shouldAdd =
-      drag.active && this._clientPointIsInside(canvas, event.clientX, event.clientY);
-    this._finishEntityPointerDrag();
-    if (shouldAdd && canvas) {
-      this._addMarkerAtClientPoint(drag.entityId, event.clientX, event.clientY, canvas);
-    }
-  }
-
-  private _onEntityPointerCancel(event: PointerEvent) {
-    if (this._entityPointerDrag?.pointerId !== event.pointerId) return;
-    this._finishEntityPointerDrag();
   }
 
   private _canvasContainer(): HTMLElement | null {
     return this.renderRoot.querySelector<HTMLElement>(".canvas-container");
-  }
-
-  private _clientPointIsInside(
-    element: HTMLElement | null,
-    clientX: number,
-    clientY: number
-  ): element is HTMLElement {
-    if (!element) return false;
-    const bounds = element.getBoundingClientRect();
-    return (
-      clientX >= bounds.left &&
-      clientX <= bounds.right &&
-      clientY >= bounds.top &&
-      clientY <= bounds.bottom
-    );
-  }
-
-  private _finishEntityPointerDrag() {
-    this._canvasContainer()?.classList.remove("drag-target");
-    const drag = this._entityPointerDrag;
-    if (drag) {
-      if (drag.holdTimer !== null) window.clearTimeout(drag.holdTimer);
-      try {
-        if (drag.target.hasPointerCapture(drag.pointerId)) {
-          drag.target.releasePointerCapture(drag.pointerId);
-        }
-      } catch {
-        // The browser may already have released capture after pointerup/cancel.
-      }
-    }
-    this._entityPointerDrag = null;
   }
 
   private _addMarkerAtClientPoint(
@@ -1014,13 +685,12 @@ export class FloorplanPanel extends LitElement {
     clientY: number,
     container: HTMLElement
   ) {
-    if (!this._stage) return;
-    const bounds = container.getBoundingClientRect();
-    const transform = this._stage.getAbsoluteTransform().copy().invert();
-    this._addMarkerAt(
-      entityId,
-      transform.point({ x: clientX - bounds.left, y: clientY - bounds.top })
-    );
+    if (this._threeViewport) {
+      this._threeViewport.dropAt(clientX, clientY, entityId);
+      return;
+    }
+    const point = this._konva?.clientPoint(clientX, clientY, container);
+    if (point) this._addMarkerAt(entityId, point);
   }
 
   private _updateMarker(markerId: string, updates: Partial<Marker>) {
@@ -1031,97 +701,8 @@ export class FloorplanPanel extends LitElement {
     void this._commitConfig(updateMarker(this._config, plan.plan_id, markerId, updates));
   }
 
-  private _onMarkerTagsChange(event: Event) {
-    const marker = this._getSelectedMarker();
-    if (!marker) return;
-    const tags = (event.target as HTMLInputElement).value
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean);
-    this._updateMarker(marker.id, { tags: [...new Set(tags)] });
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private _onMarkerAreaChange(event: Event) {
-    const marker = this._getSelectedMarker();
-    if (!marker) return;
-    this._updateMarker(marker.id, {
-      area_id: (event.target as HTMLSelectElement).value || null,
-    });
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private _onMarkerLabelModeChange(event: Event) {
-    const marker = this._getSelectedMarker();
-    if (!marker) return;
-    const labelMode = (event.target as HTMLSelectElement).value as Marker["label_mode"];
-    this._updateMarker(marker.id, { label_mode: labelMode });
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private _onMarkerActionChange(event: Event) {
-    const marker = this._getSelectedMarker();
-    const tap = (event.target as HTMLSelectElement).value;
-    if (!marker || (tap !== "more-info" && tap !== "toggle" && tap !== "none")) return;
-    this._updateMarker(marker.id, { action: { ...marker.action, tap } });
-  }
-
-  private _updateMarkerBinding(
-    slot: "primary" | "secondary",
-    field: "source" | "attr" | "format",
-    event: Event
-  ) {
-    const marker = this._getSelectedMarker();
-    if (!marker) return;
-    const value = (event.target as HTMLInputElement | HTMLSelectElement).value;
-    const current = marker.bind[slot] ?? { source: "state" as const };
-    const binding = {
-      ...current,
-      [field]: field === "source" ? (value as "state" | "attr") : value || undefined,
-      ...(field === "source" && value === "attr" && !current.attr ? { attr: "friendly_name" } : {}),
-      ...(field === "attr" && current.source === "attr" && !value ? { attr: "friendly_name" } : {}),
-    };
-    this._updateMarker(marker.id, {
-      bind: { ...marker.bind, [slot]: binding },
-    });
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private _addMarkerSecondaryBinding() {
-    const marker = this._getSelectedMarker();
-    if (!marker || marker.bind.secondary) return;
-    this._updateMarker(marker.id, {
-      bind: { ...marker.bind, secondary: { source: "state" } },
-    });
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private _removeMarkerSecondaryBinding() {
-    const marker = this._getSelectedMarker();
-    if (!marker) return;
-    const bind = { ...marker.bind };
-    delete bind.secondary;
-    this._updateMarker(marker.id, { bind });
-    this._renderMarkers(this._getCurrentPlan());
-  }
-
-  private async _deleteSelectedMarker() {
-    if (!this._canEdit || !this._config || !this._selectedMarkerId) return;
-    const markerId = this._selectedMarkerId;
-    const plan = this._getCurrentPlan();
-    if (
-      !plan ||
-      !(await this._askConfirm(
-        this._t("dialog.deleteMarkerMessage"),
-        this._t("editor.deleteMarker"),
-        true
-      ))
-    )
-      return;
-
-    void this._commitConfig(removeMarker(this._config, plan.plan_id, markerId));
-    this._selectedMarkerId = null;
-    this._renderMarkers(this._getCurrentPlan());
+  private _deleteSelectedMarker() {
+    return this._edits.deleteObject("marker", this._getCurrentPlan(), this._selectedMarkerId);
   }
 
   private async _activateMarker(marker: Marker): Promise<void> {
@@ -1153,9 +734,6 @@ export class FloorplanPanel extends LitElement {
     this._switchTab("inspector");
     this._selectedAreaId = kind === "area" ? id : null;
     this._selectedMarkerId = kind === "marker" ? id : null;
-    this._renderAreas(this._getCurrentPlan());
-    this._syncCanvasInteractivity();
-    this.requestUpdate();
   }
 
   private _onCanvasKeydown(event: KeyboardEvent): void {
@@ -1169,6 +747,28 @@ export class FloorplanPanel extends LitElement {
       event.preventDefault();
       if (event.shiftKey) this._redo();
       else this._undo();
+      return;
+    }
+    if (
+      event.key === "Enter" &&
+      is3DPlan(this._getCurrentPlan()) &&
+      (this._entityToAdd || this._shape === "anchor3d")
+    ) {
+      const container = this._canvasContainer();
+      if (!container) return;
+      event.preventDefault();
+      const bounds = container.getBoundingClientRect();
+      const hit = this._threeViewport?.raycastClientPoint(
+        bounds.left + bounds.width / 2,
+        bounds.top + bounds.height / 2
+      );
+      if (!hit) return;
+      const { x, y, z } = hit;
+      if (this._shape === "anchor3d") {
+        this._addDrawnArea(createAnchor3DArea(this._newId("area"), { x, y, z }));
+      } else if (this._entityToAdd) {
+        this._addMarkerAt(this._entityToAdd, { x, y, z });
+      }
       return;
     }
     if (event.key !== "Delete" && event.key !== "Backspace") return;
@@ -1187,212 +787,12 @@ export class FloorplanPanel extends LitElement {
 
   private _setView(viewId: string) {
     this._switchTab(this._tab);
-    this._selectedAreaId = null;
-    this._selectedMarkerId = null;
+    this._clearSelection();
     this._currentView = viewId;
   }
 
-  private async _addView() {
-    if (!this._canEdit || !this._config) return;
-    const name = (await this._askText(this._t("dialog.newView")))?.trim();
-    if (!name) return;
-
-    const view = createView(name, this._config.views);
-    void this._commitConfig({
-      ...this._config,
-      views: [...this._config.views, view],
-    });
-    this._currentView = view.id;
-  }
-
-  private async _renameCurrentView() {
-    if (!this._canEdit || !this._config) return;
-    const view = this._getCurrentView();
-    if (!view) return;
-    const name = (await this._askText(this._t("dialog.renameView"), view.name))?.trim();
-    if (!name || name === view.name) return;
-    void this._commitConfig(
-      updateView(this._config, view.id, (candidate) => ({ ...candidate, name }))
-    );
-  }
-
-  private _moveCurrentView(direction: -1 | 1) {
-    if (!this._canEdit || !this._config) return;
-    const config = moveView(this._config, this._currentView, direction);
-    if (config) void this._commitConfig(config);
-  }
-
-  private _setDefaultView() {
-    if (!this._canEdit || !this._config) return;
-    void this._commitConfig({ ...this._config, default_view: this._currentView });
-    this._setNotice(
-      this._t("panel.defaultView", { name: this._getCurrentView()?.name ?? this._currentView })
-    );
-  }
-
-  private async _deleteCurrentView() {
-    if (
-      !this._canEdit ||
-      !this._config ||
-      this._currentView === "all" ||
-      this._config.views.length <= 1
-    )
-      return;
-    const viewId = this._currentView;
-    if (
-      !(await this._askConfirm(
-        this._t("dialog.deleteViewMessage"),
-        this._t("editor.deleteView"),
-        true
-      ))
-    )
-      return;
-
-    const result = removeView(this._config, viewId);
-    if (!result) return;
-    void this._commitConfig(result.config);
-    this._currentView = result.nextViewId;
-  }
-
-  private _updateViewFilter(filterName: "domains" | "tags" | "area_ids", event: Event) {
-    if (!this._canEdit || !this._config) return;
-    const values = (event.target as HTMLInputElement).value
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-    void this._commitConfig(
-      updateView(this._config, this._currentView, (view) => {
-        const filters: View["filters"] = { ...view.filters };
-        filters[filterName] = values.length ? [...new Set(values)] : undefined;
-        return { ...view, filters };
-      })
-    );
-    this._renderMarkers(this._getCurrentPlan());
-    this._renderAreas(this._getCurrentPlan());
-  }
-
-  private _updateAreaOverlayValue(
-    slot: "primary" | "secondary",
-    field: "entity_id" | "source" | "attr" | "format",
-    event: Event
-  ) {
-    if (!this._canEdit || !this._config) return;
-    const value = (event.target as HTMLInputElement | HTMLSelectElement).value.trim();
-    void this._commitConfig(
-      updateView(this._config, this._currentView, (view) => {
-        const areaOverlay = { ...view.area_overlay };
-        if (field === "entity_id" && !value) {
-          delete areaOverlay[slot];
-        } else {
-          const current: ValueSpec = areaOverlay[slot] ?? {
-            mode: "entity",
-            entity_id: value,
-            source: "state",
-          };
-          if (field !== "entity_id" && !current.entity_id) return view;
-          areaOverlay[slot] = {
-            ...current,
-            [field]: field === "source" ? (value as "state" | "attr") : value || undefined,
-            ...(field === "source" && value === "attr" && !current.attr
-              ? { attr: "friendly_name" }
-              : {}),
-            ...(field === "attr" && current.source === "attr" && !value
-              ? { attr: "friendly_name" }
-              : {}),
-          };
-        }
-        return { ...view, area_overlay: areaOverlay };
-      })
-    );
-    this._renderAreas(this._getCurrentPlan());
-  }
-
-  private _updateAreaBadges(event: Event) {
-    if (!this._canEdit || !this._config) return;
-    const raw = (event.target as HTMLInputElement).value;
-    const badges = raw
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .flatMap<BadgeSpec>((entry) => {
-        const [condition, label] = entry.split(":", 2);
-        const [entityId, stateIs] = condition.split("=", 2).map((value) => value.trim());
-        if (!entityId || !stateIs) return [];
-        const trimmedLabel = label?.trim();
-        return [
-          {
-            entity_id: entityId,
-            when: { state_is: stateIs },
-            ...(trimmedLabel ? { label: trimmedLabel } : {}),
-          },
-        ];
-      });
-
-    void this._commitConfig(
-      updateView(this._config, this._currentView, (view) => ({
-        ...view,
-        area_overlay: {
-          ...view.area_overlay,
-          badges: badges.length ? badges : undefined,
-        },
-      }))
-    );
-    this._renderAreas(this._getCurrentPlan());
-  }
-
-  private _updateAreaStyle(field: "fill" | "stroke" | "fillOpacity" | "strokeWidth", event: Event) {
-    const area = this._getSelectedArea();
-    if (!area) return;
-    const input = event.target as HTMLInputElement;
-    let value: string | number =
-      field === "fill" || field === "stroke" ? input.value : Number(input.value);
-    if (typeof value === "number" && !Number.isFinite(value)) return;
-    if (field === "fillOpacity" && typeof value === "number") {
-      value = Math.max(0, Math.min(1, value));
-    }
-    if (field === "strokeWidth" && typeof value === "number") {
-      value = Math.max(0, Math.min(50, value));
-    }
-
-    const plan = this._getCurrentPlan();
-    if (!this._config || !plan) return;
-    void this._commitConfig({
-      ...this._config,
-      plans: this._config.plans.map((candidate) =>
-        candidate.plan_id === plan.plan_id
-          ? {
-              ...candidate,
-              areas: candidate.areas.map((candidateArea) =>
-                candidateArea.id === area.id
-                  ? { ...candidateArea, style: { ...candidateArea.style, [field]: value } }
-                  : candidateArea
-              ),
-            }
-          : candidate
-      ),
-    });
-    this._renderAreas(this._getCurrentPlan());
-  }
-
-  private async _exportConfig() {
-    if (!this._config) return;
-    try {
-      const portable = await createPortableConfig(this.hass, this._config);
-      const blob = new Blob([JSON.stringify(portable)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `floorplan-ui-config-v${this._config.version}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      this._setNotice(this._t("panel.exported"));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : this._t("panel.exportFailed");
-      this._setError(message);
-    }
+  private _deleteCurrentView() {
+    return this._edits.deleteView(this._currentView);
   }
 
   private _triggerConfigImport() {
@@ -1400,121 +800,16 @@ export class FloorplanPanel extends LitElement {
     (this.renderRoot.querySelector(".config-file-input") as HTMLInputElement)?.click();
   }
 
-  private async _handleConfigImport(event: Event) {
-    if (!this._canEdit) return;
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (!file) return;
-    if (file.size > MAX_PORTABLE_CONFIG_BYTES) {
-      this._setError(this._t("panel.configTooLarge"));
-      return;
-    }
-
-    try {
-      const parsed: unknown = JSON.parse(await file.text());
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-        throw new Error("The JSON root must be an object.");
-      }
-      const imported = parsed as {
-        plans?: unknown;
-        views?: unknown;
-      };
-      const planCount = Array.isArray(imported.plans) ? imported.plans.length : 0;
-      const viewCount = Array.isArray(imported.views) ? imported.views.length : 0;
-      if (
-        !(await this._askConfirm(
-          this._t("dialog.importMessage", { plans: planCount, views: viewCount }),
-          this._t("dialog.import")
-        ))
-      )
-        return;
-
-      const materialized = await materializeImportedImages(this.hass, parsed as FloorplanConfig);
-      const validated = await validateFloorplanConfig(this.hass, materialized);
-
-      this._currentPlanId = validated.plans[0]?.plan_id ?? null;
-      this._currentView = validated.views.some((view) => view.id === validated.default_view)
-        ? (validated.default_view ?? "all")
-        : (validated.views[0]?.id ?? "all");
-      this._selectedAreaId = null;
-      this._selectedMarkerId = null;
-      const saved = await this._commitConfig(validated);
-      if (!saved) return;
-      this._renderFloorplan();
-      this._setNotice(this._t("panel.imported"));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : this._t("panel.invalidConfig");
-      this._setError(this._t("panel.importFailed", { message }));
-    }
-  }
-
-  private async _handleFileUpload(e: Event) {
-    if (!this._canEdit) return;
-    const replacePlanId = this._replacePlanId;
+  private _handleFileUpload(event: Event) {
+    const replaceId = this._replacePlanId;
     this._replacePlanId = null;
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (!file) return;
-    if (!["image/png", "image/jpeg"].includes(file.type)) {
-      this._setError(this._t("panel.imageTypeError"));
-      return;
-    }
-    if (file.size > MAX_IMAGE_FILE_BYTES) {
-      this._setError(this._t("panel.imageTooLarge"));
-      return;
-    }
-
-    let image: ImageBitmap | null = null;
-    try {
-      const background = await uploadFloorplanImage(this.hass, file);
-      image = await createImageBitmap(file);
-      const imageBackground: FloorplanBackground = {
-        type: "image",
-        asset_id: background.asset_id,
-        content_type: background.content_type,
-        url: background.url,
-        width: image.width,
-        height: image.height,
-      };
-      if (replacePlanId) {
-        const config = this._config;
-        const plan = config?.plans.find((candidate) => candidate.plan_id === replacePlanId);
-        if (!config || !plan || !this._canEdit) return;
-        const saved = this._commitConfig(replacePlanBackground(config, plan, imageBackground));
-        if (this._currentPlanId === replacePlanId) this._renderFloorplan();
-        await saved;
-      } else {
-        this._createNewPlan(file.name, imageBackground);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : this._t("panel.imageUploadFailed");
-      this._setError(message);
-    } finally {
-      image?.close();
-    }
-  }
-
-  private _createNewPlan(name: string, background: FloorplanBackground) {
-    if (!this._canEdit || !this._config) return;
-
-    const planId = this._newId("plan");
-    void this._commitConfig(addPlan(this._config, createPlan(planId, name, background)));
-    this._switchTab("entities");
-    this._currentPlanId = planId;
-    this._renderFloorplan();
+    return this._edits.uploadAsset(event, replaceId);
   }
 
   private _triggerFileUpload(replacePlanId: string | null = null) {
     if (!this._canEdit) return;
     this._replacePlanId = replacePlanId;
     (this.renderRoot.querySelector(".file-input") as HTMLInputElement)?.click();
-  }
-
-  private _getVisibleCanvasCenter(): { x: number; y: number } {
-    if (!this._stage) return { x: 0, y: 0 };
-    return getVisibleStageCenter(this._stage);
   }
 
   private _newId(prefix: string): string {
@@ -1524,40 +819,85 @@ export class FloorplanPanel extends LitElement {
     return `${prefix}_${suffix}`;
   }
 
-  private _renderEditor(
-    currentPlan: Plan | null,
-    currentView: View | undefined,
-    selectedArea: AreaShape | null,
-    selectedMarker: Marker | null
-  ) {
-    const entitySearch = this._entitySearch.trim().toLowerCase();
-    const entityDomains = [...new Set(this._haEntities.map((entity) => entity.domain))].sort();
-    const entityOptions = this._haEntities.filter((entity) => {
-      const matchesSearch =
-        !entitySearch ||
-        entity.entity_id.toLowerCase().includes(entitySearch) ||
-        Boolean(entity.name?.toLowerCase().includes(entitySearch));
-      const matchesDomain = !this._entityDomainFilter || entity.domain === this._entityDomainFilter;
-      const matchesArea = !this._entityAreaFilter || entity.area_id === this._entityAreaFilter;
-      return matchesSearch && matchesDomain && matchesArea;
-    });
-    return renderFloorplanEditor(
+  private _resetEntityScroll() {
+    this._entityScrollTop = 0;
+    const palette = this.renderRoot.querySelector<HTMLElement>(".entity-palette");
+    if (palette) palette.scrollTop = 0;
+  }
+
+  private _setCameraMode(mode: "ortho" | "perspective") {
+    this._threeViewport?.setCameraMode(mode);
+    this._cameraMode = mode;
+  }
+
+  private _toggleCameraMode() {
+    this._setCameraMode(this._cameraMode === "ortho" ? "perspective" : "ortho");
+  }
+
+  private _applyCameraPreset(id: string) {
+    if (!this._threeViewport?.applyCameraPreset(id)) return;
+    this._cameraMode = this._threeViewport.getCameraPreset()?.mode ?? this._cameraMode;
+  }
+
+  private async _saveCameraPreset() {
+    const plan = this._getCurrentPlan();
+    const viewport = this._threeViewport;
+    if (!this._canEdit || !plan || !viewport) return;
+    const preset = viewport.getCameraPreset();
+    if (!preset) return;
+    const name = (await this._askText(this._t("editor.savePreset")))?.trim();
+    if (!this._config || !name || this._threeViewport !== viewport) return;
+    void this._commitConfig(
+      addCameraPreset(this._config, plan.plan_id, {
+        ...preset,
+        id: this._newId("camera"),
+        name,
+        mode: preset.mode ?? this._cameraMode,
+      })
+    );
+  }
+
+  private async _jumpToWarning({ planId, viewId, targetId, targetType }: ConfigDiagnostic) {
+    this._warningsOpen = false;
+    if (planId && planId !== this._currentPlanId) this._changePlan(planId);
+    if (viewId) this._setView(viewId);
+    this._clearSelection();
+    if (targetId && (targetType === "area" || targetType === "marker")) {
+      this._selectCanvasObject(targetType, targetId);
+      if (is3DPlan(this._getCurrentPlan())) {
+        this._pending3DFocus = { kind: targetType, id: targetId };
+      }
+      await this.updateComplete;
+      if (this._pending3DFocus && this._threeViewport) {
+        const focused =
+          this._pending3DFocus.kind === "area"
+            ? this._threeViewport.focusArea(this._pending3DFocus.id)
+            : this._threeViewport.focusMarker(this._pending3DFocus.id);
+        if (focused) this._pending3DFocus = null;
+      }
+      this._konva?.focusObject(targetType, targetId);
+    } else {
+      this._switchTab("settings");
+      await this.updateComplete;
+    }
+    this.renderRoot.querySelector<HTMLElement>('.editor-nav [aria-current="page"]')?.focus();
+  }
+
+  private _renderEditor(currentPlan: Plan | null, currentView: View | undefined) {
+    return renderPanelEditor(
+      this._getCanvasState(),
       {
-        currentPlan,
-        currentView,
-        currentViewId: this._currentView,
-        selectedArea,
-        selectedMarker,
-        areas: this._haAreas,
         tab: this._tab,
-        matchCount: entityOptions.length,
-        entityCount: this._haEntities.length,
-        entityOptions: entityOptions.slice(0, this._entityLimit),
-        entityDomains,
+        currentViewId: this._currentView,
+        availableMeshes: currentPlan
+          ? this._availableMeshesByPlan.get(currentPlan.plan_id)
+          : undefined,
+        entityToAdd: this._entityToAdd,
         entitySearch: this._entitySearch,
         entityDomainFilter: this._entityDomainFilter,
         entityAreaFilter: this._entityAreaFilter,
-        entityToAdd: this._entityToAdd,
+        entityScrollTop: this._entityScrollTop,
+        entityViewportHeight: this._entityViewportHeight,
         canUndo: this._history.canUndo,
         canRedo: this._history.canRedo,
       },
@@ -1566,356 +906,128 @@ export class FloorplanPanel extends LitElement {
         replaceImage: () => this._triggerFileUpload(currentPlan?.plan_id),
         undo: () => this._undo(),
         redo: () => this._redo(),
-        renamePlan: () => this._renameCurrentPlan(),
-        deletePlan: () => this._deleteCurrentPlan(),
-        showMore: () => {
-          this._entityLimit += 100;
+        renamePlan: () => this._edits.renamePlan(currentPlan),
+        deletePlan: () => this._edits.deletePlan(currentPlan),
+        onEntityScroll: (top, height) => {
+          this._entityScrollTop = top;
+          this._entityViewportHeight = height;
         },
-        addView: () => this._addView(),
-        renameView: () => this._renameCurrentView(),
-        moveView: (direction) => this._moveCurrentView(direction),
-        setDefaultView: () => this._setDefaultView(),
+        addView: () => this._edits.addView(),
+        renameView: () => this._edits.renameView(currentView),
+        moveView: (direction) => this._edits.moveView(this._currentView, direction),
+        setDefaultView: () => this._edits.setDefaultView(currentView),
         deleteView: () => this._deleteCurrentView(),
-        exportConfig: () => this._exportConfig(),
+        exportConfig: () => this._edits.exportConfig(this._config),
         importConfig: () => this._triggerConfigImport(),
         setEntitySearch: (value) => {
-          this._entityLimit = 100;
+          this._resetEntityScroll();
           this._entitySearch = value;
         },
         setEntityDomainFilter: (value) => {
-          this._entityLimit = 100;
+          this._resetEntityScroll();
           this._entityDomainFilter = value;
         },
         setEntityAreaFilter: (value) => {
-          this._entityLimit = 100;
+          this._resetEntityScroll();
           this._entityAreaFilter = value;
         },
         setEntityToAdd: (value, event) => {
-          if (!this._skipEntityClick || !event.detail) this._armPlacement(null, value);
-          this._skipEntityClick = false;
+          if (!this._drag.skipNextClick || !event.detail) this._armPlacement(null, value);
+          this._drag.skipNextClick = false;
         },
         switchTab: (tab) => this._switchTab(tab),
-        startEntityDrag: (entityId, event) => this._onEntityDragStart(entityId, event),
-        startEntityPointerDrag: (entityId, event) => this._onEntityPointerDown(entityId, event),
-        updateViewFilter: (filterName, event) => this._updateViewFilter(filterName, event),
-        updateAreaOverlay: (slot, field, event) => this._updateAreaOverlayValue(slot, field, event),
-        updateAreaBadges: (event) => this._updateAreaBadges(event),
-        bindArea: (event) => this._onBindAreaChange(event),
-        updateAreaTags: (event) => this._onAreaTagsChange(event),
-        updateAreaStyle: (field, event) => this._updateAreaStyle(field, event),
+        startEntityDrag: this._drag.onEntityDragStart,
+        startEntityPointerDrag: this._drag.onEntityPointerDown,
+        updatePlan3DSettings: (field, event) =>
+          this._edits.updatePlan3DSettings(currentPlan, field, event),
+        saveCameraPreset: () => void this._saveCameraPreset(),
+        applyCameraPreset: (id) => this._applyCameraPreset(id),
+        deleteCameraPreset: (id) => this._edits.deleteCameraPreset(currentPlan, id),
         deleteArea: () => this._deleteSelectedArea(),
-        updateMarkerTags: (event) => this._onMarkerTagsChange(event),
-        updateMarkerArea: (event) => this._onMarkerAreaChange(event),
-        updateMarkerLabelMode: (event) => this._onMarkerLabelModeChange(event),
-        updateMarkerAction: (event) => this._onMarkerActionChange(event),
-        updateMarkerBinding: (slot, field, event) => this._updateMarkerBinding(slot, field, event),
-        addMarkerSecondaryBinding: () => this._addMarkerSecondaryBinding(),
-        removeMarkerSecondaryBinding: () => this._removeMarkerSecondaryBinding(),
         deleteMarker: () => this._deleteSelectedMarker(),
       },
+      () => this._config,
+      (config) => this._commitConfig(config),
       this._t
     );
   }
 
   protected render() {
-    const fallbackViews: View[] = [
-      { id: "all", name: "All", filters: {} },
-      { id: "heating", name: "Heating", filters: { tags: ["heating"] } },
-      { id: "lights", name: "Lights", filters: { domains: ["light", "switch"] } },
-      { id: "network", name: "Network", filters: { tags: ["network"] } },
-      { id: "entertainment", name: "Entertainment", filters: { domains: ["media_player"] } },
-    ];
-    const views = this._config?.views.length ? this._config.views : fallbackViews;
-    const plans = this._config?.plans ?? [];
     const currentPlan = this._getCurrentPlan();
     const currentView = this._getCurrentView();
-    const selectedArea = this._getSelectedArea();
-    const selectedMarker = this._getSelectedMarker();
-    const visibleAreas =
-      currentPlan?.areas.filter((area) => this._editMode || areaMatchesView(area, currentView)) ??
-      [];
-    const visibleMarkers =
-      currentPlan?.markers.filter(
-        (marker) => this._editMode || markerMatchesView(marker, currentView)
-      ) ?? [];
-    const placementEntity = this._entityToAdd
-      ? this._haEntities.find((entity) => entity.entity_id === this._entityToAdd)
-      : undefined;
-
     const t = this._t;
-    const saveMessage =
-      this._saveState === "pending"
-        ? t("panel.pending")
-        : this._saveState === "saving"
-          ? t("panel.saving")
-          : this._notice === t("panel.changesSaved")
-            ? this._notice
-            : "";
-    return html`
-      <div class="container ${this.narrow ? "narrow" : ""}">
-        <div class="toolbar">
-          <div class="toolbar-left">
-            ${this.narrow
-              ? html`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>`
-              : ""}
-            <div class="workspace-title">
-              <h1>${t("panel.title")}</h1>
-              <span
-                class="save-indicator ${saveMessage ? "status" : ""}"
-                role="status"
-                aria-live="polite"
-                >${saveMessage}</span
-              >
-            </div>
-            ${currentPlan
-              ? html`<label class="plan-select">
-                  <span>${t("panel.plan")}</span>
-                  <select @change=${this._selectPlan}>
-                    ${plans.map(
-                      (plan) => html`
-                        <option
-                          value=${plan.plan_id}
-                          ?selected=${currentPlan?.plan_id === plan.plan_id}
-                        >
-                          ${plan.name}
-                        </option>
-                      `
-                    )}
-                  </select>
-                </label>`
-              : ""}
-          </div>
-          <div class="toolbar-right">
-            ${this._canEdit && this._config
-              ? html`
-                  <button
-                    class="edit-toggle ${this._editMode ? "active" : ""}"
-                    aria-pressed=${this._editMode ? "true" : "false"}
-                    @click=${this._toggleEditMode}
-                  >
-                    ${this._editMode ? t("panel.done") : t("panel.edit")}
-                  </button>
-                `
-              : !this._canEdit
-                ? html`<span class="viewer-note">${t("panel.viewOnly")}</span>`
-                : ""}
-          </div>
-        </div>
-        ${currentPlan
-          ? html`<nav class="views-bar" aria-label=${t("panel.views")}>
-              <div class="view-tabs">
-                ${views.map(
-                  (view) => html`
-                    <button
-                      class="view-tab ${this._currentView === view.id ? "active" : ""}"
-                      type="button"
-                      aria-pressed=${this._currentView === view.id ? "true" : "false"}
-                      @click=${() => this._setView(view.id)}
-                    >
-                      ${view.id === this._config?.default_view ? "★ " : ""}${view.name}
-                    </button>
-                  `
-                )}
-              </div>
-            </nav>`
-          : ""}
-        <div class="workspace ${this._editMode ? "editing" : ""}">
-          <input
-            type="file"
-            class="file-input"
-            aria-label=${t("panel.upload")}
-            accept="image/png,image/jpeg"
-            @change=${this._handleFileUpload}
-          />
-          <input
-            type="file"
-            class="config-file-input"
-            aria-label=${t("editor.import")}
-            accept="application/json,.json"
-            @change=${this._handleConfigImport}
-          />
-
-          <div
-            class="canvas-container"
-            role="application"
-            tabindex="0"
-            aria-label=${t("panel.canvas")}
-            @keydown=${this._onCanvasKeydown}
-            @dragover=${this._onCanvasDragOver}
-            @dragleave=${this._onCanvasDragLeave}
-            @drop=${this._onCanvasDrop}
-          >
-            ${this._loading
-              ? html`<div class="loading" role="status">${t("panel.loading")}</div>`
-              : html`<div class="canvas-wrapper"></div>`}
-            ${this._editMode && currentPlan && (this._shape || this._entityToAdd)
-              ? html` <button
-                    class="placement-surface"
-                    aria-label=${t("editor.placeHint")}
-                    @click=${this._place}
-                  ></button>
-                  <div class="placement-prompt">
-                    <div>
-                      <strong
-                        >${placementEntity?.name ||
-                        this._entityToAdd ||
-                        t(this._shape === "rect" ? "editor.rectangle" : "editor.polygon")}</strong
-                      ><span>${t("editor.placeHint")}</span>
-                    </div>
-                    <button @click=${() => this._switchTab(this._tab)}>
-                      ${t("dialog.cancel")}
-                    </button>
-                  </div>`
-              : ""}
-            ${this._editMode && currentPlan && !this._entityToAdd && !this._shape
-              ? html`<div class="map-tools" role="group" aria-label=${t("editor.quickActions")}>
-                  <button
-                    type="button"
-                    aria-pressed="true"
-                    @click=${() => this._switchTab("inspector")}
-                  >
-                    ${t("editor.selectTool")}
-                  </button>
-                  <button type="button" @click=${() => this._armPlacement("rect")}>
-                    ${t("editor.rectangle")}
-                  </button>
-                  <button type="button" @click=${() => this._armPlacement("polygon")}>
-                    ${t("editor.polygon")}
-                  </button>
-                </div>`
-              : ""}
-            <div class="panel-feedback">
-              ${this._notice && this._notice !== t("panel.changesSaved")
-                ? html`<div class="status" role="status">${this._notice}</div>`
-                : ""}
-              ${this._error
-                ? html`
-                    <div class="status error" role="alert">
-                      ${this._error}
-                      ${this._loadFailed
-                        ? html`<button type="button" @click=${this._loadConfig}>
-                            ${t("panel.retry")}
-                          </button>`
-                        : this._saveState === "failed"
-                          ? this._saveConflict
-                            ? html`
-                                <button type="button" @click=${this._reloadAfterConflict}>
-                                  ${t("panel.reload")}
-                                </button>
-                              `
-                            : html`<button type="button" @click=${this._retrySave}>
-                                ${t("panel.retry")}
-                              </button>`
-                          : ""}
-                    </div>
-                  `
-                : ""}
-            </div>
-            ${currentPlan && !this._loading
-              ? html`<div class="map-dock">
-                  <div class="map-caption">
-                    <strong>${this._editMode ? t("panel.editContents") : currentView?.name}</strong>
-                    <span
-                      >${t("panel.mapContents", {
-                        areas: visibleAreas.length,
-                        markers: visibleMarkers.length,
-                      })}</span
-                    >
-                  </div>
-                  <div class="map-zoom" role="group" aria-label=${t("panel.canvas")}>
-                    <button
-                      type="button"
-                      aria-label=${t("panel.zoomOut")}
-                      title=${t("panel.zoomOut")}
-                      @click=${() => this._zoomBy(0.8)}
-                    >
-                      −
-                    </button>
-                    <button
-                      type="button"
-                      aria-label=${t("panel.zoomIn")}
-                      title=${t("panel.zoomIn")}
-                      @click=${() => this._zoomBy(1.25)}
-                    >
-                      +
-                    </button>
-                    <button class="canvas-fit" type="button" @click=${this._fitCurrentPlan}>
-                      ${t("panel.fit")}
-                    </button>
-                  </div>
-                </div>`
-              : ""}
-            ${!this._loading && !this._loadFailed && !currentPlan
-              ? html`<div class="empty-state">
-                  <h2>${t("panel.emptyTitle")}</h2>
-                  <p>${this._canEdit ? t("panel.emptyDescription") : t("panel.emptyViewer")}</p>
-                  ${this._canEdit
-                    ? html`<button
-                          class="upload-btn"
-                          type="button"
-                          @click=${() => this._triggerFileUpload()}
-                        >
-                          ${t("panel.upload")}
-                        </button>
-                        <button
-                          class="import-btn"
-                          type="button"
-                          @click=${this._triggerConfigImport}
-                        >
-                          ${t("editor.import")}
-                        </button>`
-                    : ""}
-                </div>`
-              : ""}
-            <section class="canvas-accessibility" aria-label=${t("panel.objects")}>
-              <ul>
-                ${visibleAreas.map(
-                  (area) => html`
-                    <li>
-                      ${this._editMode
-                        ? html`<button
-                            type="button"
-                            aria-pressed=${this._selectedAreaId === area.id ? "true" : "false"}
-                            @click=${() => this._selectCanvasObject("area", area.id)}
-                          >
-                            ${t("panel.areaObject", { id: area.id })}
-                          </button>`
-                        : t("panel.areaObject", { id: area.id })}
-                    </li>
-                  `
-                )}
-                ${visibleMarkers.map(
-                  (marker) => html`
-                    <li>
-                      <button
-                        type="button"
-                        aria-pressed=${this._editMode && this._selectedMarkerId === marker.id
-                          ? "true"
-                          : "false"}
-                        @click=${() =>
-                          this._editMode
-                            ? this._selectCanvasObject("marker", marker.id)
-                            : this._activateMarker(marker)}
-                      >
-                        ${t("panel.markerObject", { entity: marker.entity_id })}
-                      </button>
-                    </li>
-                  `
-                )}
-              </ul>
-            </section>
-          </div>
-          ${this._editMode && this._config
-            ? this._renderEditor(currentPlan, currentView, selectedArea, selectedMarker)
-            : ""}
-        </div>
-        <floorplan-dialog
-          .dialog=${this._dialog}
-          .cancelLabel=${t("dialog.cancel")}
-          @floorplan-dialog-resolve=${(event: CustomEvent<PanelDialogResult>) =>
-            this._resolveDialog(event.detail)}
-        ></floorplan-dialog>
-      </div>
-    `;
+    const diagnostics = this._editMode
+      ? analyzeConfigDiagnostics({
+          plans: this._config?.plans ?? [],
+          views: this._config?.views ?? [],
+          states: this.hass.states,
+          entities: this._haEntities,
+          haAreas: this._haAreas,
+          availableMeshesByPlan: this._availableMeshesByPlan,
+        })
+      : [];
+    return renderPanelTemplate(
+      {
+        narrow: this.narrow,
+        editMode: this._editMode,
+        hass: this.hass,
+        entities: this._haEntities,
+        config: this._config,
+        canEdit: this._canEdit,
+        currentViewId: this._currentView,
+        loading: this._loading,
+        notice: this._notice,
+        error: this._error,
+        loadFailed: this._loadFailed,
+        saveState: this._saveState,
+        saveConflict: this._saveConflict,
+        shape: this._shape,
+        entityToAdd: this._entityToAdd,
+        selectedAreaId: this._selectedAreaId,
+        selectedMarkerId: this._selectedMarkerId,
+        dialog: this._dialog,
+        warningsOpen: this._warningsOpen,
+        currentPlan,
+        currentView,
+        cameraMode: this._cameraMode,
+        diagnostics,
+        editor: this._editMode && this._config ? this._renderEditor(currentPlan, currentView) : "",
+      },
+      {
+        selectPlan: this._selectPlan.bind(this),
+        toggleEditMode: this._toggleEditMode.bind(this),
+        setView: this._setView.bind(this),
+        handleFileUpload: this._handleFileUpload.bind(this),
+        handleConfigImport: (event) => this._edits.importConfig(event),
+        onCanvasKeydown: this._onCanvasKeydown.bind(this),
+        onCanvasDragOver: this._drag.onCanvasDragOver,
+        onCanvasDragLeave: this._drag.onCanvasDragLeave,
+        onCanvasDrop: this._drag.onCanvasDrop,
+        place: this._place.bind(this),
+        cancelPlacement: () => this._switchTab(this._tab),
+        switchTab: this._switchTab.bind(this),
+        armPlacement: this._armPlacement.bind(this),
+        loadConfig: this._loadConfig.bind(this),
+        reloadAfterConflict: this._reloadAfterConflict.bind(this),
+        retrySave: this._retrySave.bind(this),
+        zoomBy: this._zoomBy.bind(this),
+        fitCurrentPlan: this._fitCurrentPlan.bind(this),
+        triggerFileUpload: this._triggerFileUpload.bind(this),
+        triggerConfigImport: this._triggerConfigImport.bind(this),
+        selectCanvasObject: this._selectCanvasObject.bind(this),
+        activateMarker: this._activateMarker.bind(this),
+        resolveDialog: this._resolveDialog.bind(this),
+        applyCameraPreset: this._applyCameraPreset.bind(this),
+        toggleCameraMode: this._toggleCameraMode.bind(this),
+        toggleWarnings: () => {
+          this._warningsOpen = !this._warningsOpen;
+        },
+        closeWarnings: () => {
+          this._warningsOpen = false;
+        },
+        jumpToWarning: this._jumpToWarning.bind(this),
+      },
+      t
+    );
   }
 }

@@ -87,6 +87,74 @@ def valid_config() -> dict:
     }
 
 
+def valid_model_config() -> dict:
+    """Return a v4 model plan using the new camera, geometry and overlay fields."""
+    config = valid_config()
+    config["version"] = 4
+    plan = config["plans"][0]
+    plan["background"] = {
+        "type": "model",
+        "asset_id": "b" * 64,
+        "content_type": "model/gltf-binary",
+        "unit_scale": 0.75,
+        "width": 12,
+    }
+    for index, shape in enumerate(
+        (
+            {"type": "mesh", "mesh_name": "Room", "anchor": {"x": 1, "y": 2, "z": 3}},
+            {"type": "anchor3d", "x": 5, "y": 1, "z": -3},
+        )
+    ):
+        plan["areas"].append(
+            {
+                "id": f"room-{index}",
+                "area_id": "kitchen",
+                "shape": shape,
+                "tags": ["lights"],
+                "style": {"fillOpacity": 0.4, "strokeWidth": 2},
+            }
+        )
+    plan["markers"][0]["pos"]["z"] = -2.5
+    plan["view"].update(
+        shadows=True,
+        lighting=False,
+        camera_mode="perspective",
+        camera_presets=[
+            {
+                "id": "overview",
+                "name": "Overview",
+                "mode": "ortho",
+                "position": {"x": 9, "y": 10, "z": 11},
+                "target": {"x": 0, "y": 1, "z": 0},
+                "zoom": 1.25,
+            }
+        ],
+    )
+    config["views"][0].update(
+        style={
+            "dim_inactive_areas": True,
+            "inactive_area_opacity": 0.25,
+            "highlight_active_areas": True,
+            "active_area_fill": "#abcdef",
+            "active_area_stroke": "#123456",
+            "active_area_opacity": 0.8,
+        },
+        camera_preset_id="overview",
+        area_overlay={
+            "primary": {
+                "mode": "aggregate",
+                "aggregation": "avg",
+                "domain": "sensor",
+                "device_class": "temperature",
+                "attr": "temperature",
+                "format": "{value} °C",
+            },
+            "secondary": {"mode": "aggregate", "aggregation": "count_open"},
+        },
+    )
+    return config
+
+
 class FloorplanStoreTests(unittest.TestCase):
     """Exercise schema validation, normalization, and migration."""
 
@@ -151,7 +219,7 @@ class FloorplanStoreTests(unittest.TestCase):
 
         migrated = FloorplanStore._migrate_config(original)
 
-        self.assertEqual(3, migrated["version"])
+        self.assertEqual(4, migrated["version"])
         self.assertEqual(0, migrated["revision"])
         migrated_marker = migrated["plans"][0]["markers"][0]
         self.assertIsNone(migrated_marker["area_id"])
@@ -160,6 +228,54 @@ class FloorplanStoreTests(unittest.TestCase):
         self.assertEqual([], migrated_marker["tags"])
         self.assertEqual({"primary": {"source": "state"}}, migrated_marker["bind"])
         self.assertNotIn("area_id", original_marker)
+
+    def test_v3_migration_only_bumps_version_for_complete_config(self) -> None:
+        original = valid_config()
+        original["revision"] = 8
+
+        migrated = FloorplanStore._migrate_config(original)
+
+        self.assertEqual({**original, "version": 4}, migrated)
+        migrated["plans"][0]["background"]["width"] = 640
+        self.assertEqual(1200, original["plans"][0]["background"]["width"])
+        self.assertEqual(3, original["version"])
+
+    def test_model_fields_round_trip_without_persisting_the_signed_url(self) -> None:
+        original = valid_model_config()
+        plan = original["plans"][0]
+        old_background = plan["background"].copy()
+        plan["background"]["url"] = "/api/floorplan_ui/assets/example?authSig=signed"
+
+        normalized = FloorplanStore.validate_and_normalize(original)
+        saved_plan = normalized["plans"][0]
+        self.assertEqual(old_background, saved_plan["background"])
+        self.assertEqual(plan["view"], saved_plan["view"])
+        self.assertEqual(plan["markers"], saved_plan["markers"])
+        self.assertEqual(original["views"], normalized["views"])
+        self.assertEqual(
+            [area["shape"] for area in plan["areas"]],
+            [area["shape"] for area in saved_plan["areas"]],
+        )
+        self.assertEqual(normalized, FloorplanStore.validate_and_normalize(normalized))
+        self.assertIn("url", plan["background"])
+
+    def test_nonfinite_model_fields_are_rejected(self) -> None:
+        for path in (
+            ("background", "unit_scale"),
+            ("markers", 0, "pos", "z"),
+            ("areas", 0, "shape", "anchor", "x"),
+            ("areas", 1, "shape", "y"),
+            ("view", "camera_presets", 0, "target", "z"),
+            ("view", "camera_presets", 0, "zoom"),
+        ):
+            with self.subTest(path=path):
+                config = valid_model_config()
+                obj = config["plans"][0]
+                for key in path[:-1]:
+                    obj = obj[key]
+                obj[path[-1]] = float("inf")
+                valid, _error = FloorplanStore._validate_config_structure(config)
+                self.assertFalse(valid)
 
     def test_future_schema_is_rejected(self) -> None:
         config = valid_config()
@@ -218,17 +334,16 @@ class FloorplanStoreTests(unittest.TestCase):
         self.assertFalse(valid)
         self.assertIn("points", error or "")
 
-    def test_embedded_svg_is_rejected(self) -> None:
+    def test_embedded_svg_is_preserved_for_import_validation(self) -> None:
         config = valid_config()
         del config["plans"][0]["background"]["asset_id"]
         del config["plans"][0]["background"]["content_type"]
-        config["plans"][0]["background"]["url"] = "data:image/svg+xml;base64,AA=="
-        valid, error = FloorplanStore._validate_config_structure(
-            config,
-            allow_embedded_images=True,
-        )
-        self.assertFalse(valid)
-        self.assertIn("PNG/JPEG", error or "")
+        url = "data:image/svg+xml;base64," + base64.b64encode(b"<svg/>").decode()
+        config["plans"][0]["background"]["url"] = url
+        normalized = FloorplanStore.validate_and_normalize(config, allow_embedded_images=True)
+        self.assertEqual(url, normalized["plans"][0]["background"]["url"])
+        with self.assertRaisesRegex(ValueError, "local image asset"):
+            FloorplanStore.validate_and_normalize(config)
 
     def test_external_background_url_is_rejected(self) -> None:
         config = valid_config()
@@ -386,7 +501,7 @@ class FloorplanLoadTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(OSError, "disk unavailable"):
             await store.async_get_config()
 
-        self.assertEqual(3, (await store.async_get_config())["version"])
+        self.assertEqual(4, (await store.async_get_config())["version"])
         self.assertEqual(2, disk.async_save.await_count)
 
     async def test_recovers_bad_images_preserves_original_and_survives_reload(self) -> None:
@@ -488,7 +603,10 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
 
             @staticmethod
             async def async_exists(asset_id: str, content_type: str) -> bool:
-                return asset_id == "a" * 64 and content_type == "image/png"
+                return (asset_id, content_type) in (
+                    ("a" * 64, "image/png"),
+                    ("b" * 64, "model/gltf-binary"),
+                )
 
             async def async_collect_garbage(self, referenced: set[str]) -> list[str]:
                 self.collected.append(referenced)
@@ -519,6 +637,18 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         await self.store.async_update_config(valid_config(), 0)
 
         self.assertEqual([{"a" * 64}], self.asset_store.collected)
+
+    async def test_update_persists_model_references_and_checks_missing_assets(self) -> None:
+        config = valid_model_config()
+        with self.assertRaisesRegex(ValueError, "missing model asset"):
+            broken = copy.deepcopy(config)
+            broken["plans"][0]["background"]["asset_id"] = "c" * 64
+            await self.store.async_update_config(broken, 0)
+        updated = await self.store.async_update_config(config, 0)
+
+        self.assertEqual(updated, self.store._data)
+        self.assertEqual([{"b" * 64}], self.asset_store.collected)
+        self.assertEqual(updated, await self.store.async_validate_config(updated))
 
     async def test_save_can_repair_one_of_several_missing_backgrounds(self) -> None:
         original = valid_config()
@@ -604,6 +734,40 @@ class FloorplanRevisionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("url", config["plans"][0]["background"])
         self.assertNotIn("url", migrated["plans"][0]["background"])
         self.assertEqual("b" * 64, migrated["plans"][0]["background"]["asset_id"])
+
+    def test_v3_migration_strips_legacy_extra_shape_and_area_fields(self) -> None:
+        legacy = valid_config()
+        legacy["version"] = 3
+        legacy["plans"][0]["areas"] = [
+            {
+                "id": "area-legacy",
+                "area_id": "living",
+                "legacy_note": "extra",
+                "shape": {
+                    "type": "rect",
+                    "x": 10,
+                    "y": 20,
+                    "width": 100,
+                    "height": 80,
+                    "rotation": 0,
+                },
+                "tags": [],
+                "style": {
+                    "fillOpacity": 0.4,
+                    "strokeWidth": 2,
+                    "legacyColor": "#fff",
+                },
+            }
+        ]
+
+        normalized = FloorplanStore.validate_and_normalize(legacy)
+
+        self.assertEqual(4, normalized["version"])
+        self.assertEqual(1, len(normalized["plans"]))
+        area = normalized["plans"][0]["areas"][0]
+        self.assertNotIn("legacy_note", area)
+        self.assertNotIn("rotation", area["shape"])
+        self.assertNotIn("legacyColor", area["style"])
 
 
 if __name__ == "__main__":

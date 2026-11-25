@@ -1,3 +1,7 @@
+import { renderAreaEditor, renderMarkerEditor } from "./floorplan-editor-inspector";
+import { renderSettingsTab } from "./floorplan-editor-settings";
+import { computeVirtualWindow } from "../lib/virtual-list";
+import type { ViewStyle, AggregateValueSpec } from "../types/floorplan-config.generated";
 import { html, type TemplateResult } from "lit";
 import type { Localize } from "../lib/i18n";
 import type {
@@ -17,6 +21,9 @@ type MarkerBindingField = "source" | "attr" | "format";
 
 export type EditorTab = "entities" | "inspector" | "settings";
 export interface FloorplanEditorModel {
+  availableMeshes?: readonly string[];
+  entityScrollTop?: number;
+  entityViewportHeight?: number;
   tab: EditorTab;
   matchCount: number;
   currentPlan: Plan | null;
@@ -43,7 +50,22 @@ export interface FloorplanEditorActions {
   redo(): void;
   renamePlan(): void;
   deletePlan(): void;
-  showMore(): void;
+  onEntityScroll?(scrollTop: number, viewportHeight: number): void;
+  updateMarkerIcon?(event: Event): void;
+  updateAreaMesh?(event: Event): void;
+  updateAreaOverlayMode?(slot: OverlaySlot, event: Event): void;
+  updateAreaOverlayAggregate?(
+    slot: OverlaySlot,
+    field: Exclude<keyof AggregateValueSpec, "mode">,
+    event: Event
+  ): void;
+  updateViewStyle?(field: keyof ViewStyle, event: Event): void;
+  updateViewCameraPreset?(event: Event): void;
+  updatePlan3DSettings?(field: "shadows" | "lighting" | "camera_mode", event: Event): void;
+  saveCameraPreset?(): void;
+  applyCameraPreset?(id: string): void;
+  deleteCameraPreset?(id: string): void;
+  showMore?(): void;
   addView(): void;
   renameView(): void;
   moveView(direction: -1 | 1): void;
@@ -80,7 +102,13 @@ export function renderFloorplanEditor(
   actions: FloorplanEditorActions,
   t: Localize
 ): TemplateResult {
-  const { currentPlan, currentView, currentViewId, selectedArea, selectedMarker } = model;
+  const { currentPlan, selectedArea, selectedMarker } = model;
+  const windowRange = computeVirtualWindow({
+    totalCount: model.entityOptions.length,
+    scrollTop: model.entityScrollTop ?? 0,
+    viewportHeight: model.entityViewportHeight ?? 180,
+    minRenderedItems: actions.onEntityScroll ? 35 : model.entityOptions.length,
+  });
   return html`
     <aside class="editor-panel" aria-label=${t("editor.title")}>
       <header class="editor-panel-header">
@@ -128,8 +156,18 @@ export function renderFloorplanEditor(
       </header>
       ${model.tab === "inspector"
         ? html`
-            ${selectedArea ? renderAreaEditor(selectedArea, model.areas, actions, t) : ""}
-            ${selectedMarker ? renderMarkerEditor(selectedMarker, model.areas, actions, t) : ""}
+            ${selectedArea
+              ? renderAreaEditor(selectedArea, model.areas, model.availableMeshes ?? [], actions, t)
+              : ""}
+            ${selectedMarker
+              ? renderMarkerEditor(
+                  selectedMarker,
+                  model.areas,
+                  currentPlan?.background.type === "model",
+                  actions,
+                  t
+                )
+              : ""}
             ${!selectedArea && !selectedMarker
               ? html`<p class="editor-selection-hint">${t("editor.selectHint")}</p>`
               : ""}
@@ -186,8 +224,15 @@ export function renderFloorplanEditor(
                   </div>
                 </details>
                 <p class="editor-helper">${t("editor.libraryHint")}</p>
-                <div class="entity-palette">
-                  ${model.entityOptions.map(
+                <div
+                  class="entity-palette"
+                  @scroll=${(event: Event) => {
+                    const element = event.currentTarget as HTMLElement;
+                    actions.onEntityScroll?.(element.scrollTop, element.clientHeight);
+                  }}
+                >
+                  <div aria-hidden="true" style=${"height:" + windowRange.topSpacerPx + "px"}></div>
+                  ${model.entityOptions.slice(windowRange.startIndex, windowRange.endIndex).map(
                     (entity) => html`
                       <button
                         type="button"
@@ -196,6 +241,7 @@ export function renderFloorplanEditor(
                         @click=${(event: MouseEvent) =>
                           actions.setEntityToAdd(entity.entity_id, event)}
                         class="entity-card"
+                        style="height:52px"
                         draggable="true"
                         @dragstart=${(event: DragEvent) =>
                           actions.startEntityDrag(entity.entity_id, event)}
@@ -208,8 +254,12 @@ export function renderFloorplanEditor(
                       </button>
                     `
                   )}
+                  <div
+                    aria-hidden="true"
+                    style=${"height:" + windowRange.bottomSpacerPx + "px"}
+                  ></div>
                 </div>
-                ${model.matchCount > model.entityOptions.length
+                ${actions.showMore && model.matchCount > model.entityOptions.length
                   ? html`<button type="button" @click=${actions.showMore}>
                       ${t("editor.showMore")}
                     </button>`
@@ -217,376 +267,7 @@ export function renderFloorplanEditor(
                 ${!model.entityOptions.length ? html`<p>${t("editor.noResults")}</p>` : ""}
               </section>
             `
-          : html`
-              <button class="add-plan" type="button" @click=${actions.uploadImage}>
-                ${t("editor.upload")}
-              </button>
-              <details class="editor-card editor-plan-view">
-                <summary>${t("editor.planView")}</summary>
-                <div class="editor-card-body editor-actions">
-                  <button type="button" ?disabled=${!currentPlan} @click=${actions.renamePlan}>
-                    ${t("editor.renamePlan")}
-                  </button>
-                  <button type="button" ?disabled=${!currentPlan} @click=${actions.replaceImage}>
-                    ${t("editor.replaceImage")}
-                  </button>
-                  <button type="button" ?disabled=${!currentPlan} @click=${actions.deletePlan}>
-                    ${t("editor.deletePlan")}
-                  </button>
-                  <button type="button" @click=${actions.addView}>+ ${t("editor.addView")}</button>
-                  <button type="button" @click=${actions.renameView}>
-                    ${t("editor.renameView")}
-                  </button>
-                  <button type="button" @click=${() => actions.moveView(-1)}>
-                    ← ${t("editor.previousView")}
-                  </button>
-                  <button type="button" @click=${() => actions.moveView(1)}>
-                    ${t("editor.nextView")} →
-                  </button>
-                  <button type="button" @click=${actions.setDefaultView}>
-                    ${t("editor.setDefault")}
-                  </button>
-                  <button
-                    type="button"
-                    ?disabled=${currentViewId === "all"}
-                    @click=${actions.deleteView}
-                  >
-                    ${t("editor.deleteView")}
-                  </button>
-                  <button type="button" @click=${actions.exportConfig}>
-                    ${t("editor.export")}
-                  </button>
-                  <button type="button" @click=${actions.importConfig}>
-                    ${t("editor.import")}
-                  </button>
-                </div>
-              </details>
-
-              <details class="editor-card editor-advanced">
-                <summary>${t("editor.viewOverlay")}</summary>
-                <div class="editor-card-body">
-                  <section class="editor-subsection">
-                    <h3>
-                      ${t("editor.viewFilters", { name: currentView?.name ?? currentViewId })}
-                    </h3>
-                    <div class="editor-fields">
-                      <label>
-                        ${t("editor.domains")}
-                        <input
-                          .value=${currentView?.filters.domains?.join(", ") ?? ""}
-                          @change=${(event: Event) => actions.updateViewFilter("domains", event)}
-                          placeholder="light, switch"
-                        />
-                      </label>
-                      <label>
-                        ${t("editor.tags")}
-                        <input
-                          .value=${currentView?.filters.tags?.join(", ") ?? ""}
-                          @change=${(event: Event) => actions.updateViewFilter("tags", event)}
-                          placeholder="heating"
-                        />
-                      </label>
-                      <label>
-                        ${t("editor.areaIds")}
-                        <input
-                          .value=${currentView?.filters.area_ids?.join(", ") ?? ""}
-                          @change=${(event: Event) => actions.updateViewFilter("area_ids", event)}
-                          placeholder="living_room"
-                        />
-                      </label>
-                    </div>
-                  </section>
-                  <section class="editor-subsection">
-                    <h3>${t("editor.areaOverlay")}</h3>
-                    <div class="editor-fields">
-                      <label>
-                        ${t("editor.primaryEntity")}
-                        <input
-                          .value=${currentView?.area_overlay?.primary?.entity_id ?? ""}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("primary", "entity_id", event)}
-                          placeholder="sensor.living_room_temperature"
-                        />
-                      </label>
-                      <label>
-                        ${t("editor.source")}
-                        <select
-                          .value=${currentView?.area_overlay?.primary?.source ?? "state"}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("primary", "source", event)}
-                        >
-                          <option value="state">${t("editor.state")}</option>
-                          <option value="attr">${t("editor.attributeOption")}</option>
-                        </select>
-                      </label>
-                      <label>
-                        ${t("editor.attribute")}
-                        <input
-                          .value=${currentView?.area_overlay?.primary?.attr ?? ""}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("primary", "attr", event)}
-                        />
-                      </label>
-                      <label>
-                        ${t("editor.format")}
-                        <input
-                          .value=${currentView?.area_overlay?.primary?.format ?? ""}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("primary", "format", event)}
-                          placeholder="{value} °C"
-                        />
-                      </label>
-                    </div>
-                  </section>
-                  <section class="editor-subsection">
-                    <h3>${t("editor.secondaryBadges")}</h3>
-                    <div class="editor-fields">
-                      <label>
-                        ${t("editor.secondaryEntity")}
-                        <input
-                          .value=${currentView?.area_overlay?.secondary?.entity_id ?? ""}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("secondary", "entity_id", event)}
-                        />
-                      </label>
-                      <label>
-                        ${t("editor.source")}
-                        <select
-                          .value=${currentView?.area_overlay?.secondary?.source ?? "state"}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("secondary", "source", event)}
-                        >
-                          <option value="state">${t("editor.state")}</option>
-                          <option value="attr">${t("editor.attributeOption")}</option>
-                        </select>
-                      </label>
-                      <label>
-                        ${t("editor.attribute")}
-                        <input
-                          .value=${currentView?.area_overlay?.secondary?.attr ?? ""}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("secondary", "attr", event)}
-                        />
-                      </label>
-                      <label>
-                        ${t("editor.format")}
-                        <input
-                          .value=${currentView?.area_overlay?.secondary?.format ?? ""}
-                          @change=${(event: Event) =>
-                            actions.updateAreaOverlay("secondary", "format", event)}
-                        />
-                      </label>
-                      <label class="editor-field-wide">
-                        ${t("editor.badges")}
-                        <input
-                          class="grow"
-                          .value=${currentView?.area_overlay?.badges
-                            ?.map(
-                              (badge) =>
-                                `${badge.entity_id}=${badge.when.state_is}${badge.label ? `:${badge.label}` : ""}`
-                            )
-                            .join(", ") ?? ""}
-                          @change=${actions.updateAreaBadges}
-                          placeholder="binary_sensor.window=on:Window open"
-                        />
-                      </label>
-                    </div>
-                  </section>
-                </div>
-              </details>
-            `}
+          : renderSettingsTab(model, actions, t)}
     </aside>
-  `;
-}
-
-function renderAreaEditor(
-  area: AreaShape,
-  areas: HassArea[],
-  actions: FloorplanEditorActions,
-  t: Localize
-): TemplateResult {
-  return html`
-    <section class="editor-card editor-selection">
-      <h2>${t("editor.selectedArea")}</h2>
-      <strong class="editor-selection-name">${area.id}</strong>
-      <div class="editor-fields">
-        <label>
-          ${t("editor.haArea")}
-          <select @change=${actions.bindArea} .value=${area.area_id ?? ""}>
-            <option value="">${t("editor.unbound")}</option>
-            ${areas.map(
-              (candidate) => html`<option value=${candidate.id}>${candidate.name}</option>`
-            )}
-          </select>
-        </label>
-        <label>
-          ${t("editor.tags")}
-          <input
-            .value=${area.tags.join(", ")}
-            @change=${actions.updateAreaTags}
-            placeholder="downstairs, heating"
-          />
-        </label>
-        <label>
-          ${t("editor.fill")}
-          <input
-            type="color"
-            .value=${area.style.fill ?? "#2196f3"}
-            @change=${(event: Event) => actions.updateAreaStyle("fill", event)}
-          />
-        </label>
-        <label>
-          ${t("editor.stroke")}
-          <input
-            type="color"
-            .value=${area.style.stroke ?? "#1976d2"}
-            @change=${(event: Event) => actions.updateAreaStyle("stroke", event)}
-          />
-        </label>
-        <label>
-          ${t("editor.opacity")}
-          <input
-            type="number"
-            min="0"
-            max="1"
-            step="0.05"
-            .value=${String(area.style.fillOpacity)}
-            @change=${(event: Event) => actions.updateAreaStyle("fillOpacity", event)}
-          />
-        </label>
-        <label>
-          ${t("editor.strokeWidth")}
-          <input
-            type="number"
-            min="0"
-            max="20"
-            step="1"
-            .value=${String(area.style.strokeWidth)}
-            @change=${(event: Event) => actions.updateAreaStyle("strokeWidth", event)}
-          />
-        </label>
-        <button class="editor-danger editor-field-wide" type="button" @click=${actions.deleteArea}>
-          ${t("editor.deleteArea")}
-        </button>
-      </div>
-    </section>
-  `;
-}
-
-function renderMarkerEditor(
-  marker: Marker,
-  areas: HassArea[],
-  actions: FloorplanEditorActions,
-  t: Localize
-): TemplateResult {
-  return html`
-    <section class="editor-card editor-selection">
-      <h2>${t("editor.selectedMarker")}</h2>
-      <strong class="editor-selection-name">${marker.entity_id}</strong>
-      <div class="editor-fields">
-        <label>
-          ${t("editor.tags")}
-          <input
-            .value=${marker.tags.join(", ")}
-            @change=${actions.updateMarkerTags}
-            placeholder="heating, downstairs"
-          />
-        </label>
-        <label>
-          ${t("editor.haArea")}
-          <select .value=${marker.area_id ?? ""} @change=${actions.updateMarkerArea}>
-            <option value="">${t("editor.unbound")}</option>
-            ${areas.map((area) => html`<option value=${area.id}>${area.name}</option>`)}
-          </select>
-        </label>
-        <label>
-          ${t("editor.label")}
-          <select .value=${marker.label_mode} @change=${actions.updateMarkerLabelMode}>
-            <option value="auto">${t("editor.auto")}</option>
-            <option value="short">${t("editor.short")}</option>
-            <option value="full">${t("editor.full")}</option>
-            <option value="off">${t("editor.off")}</option>
-          </select>
-        </label>
-        <label>
-          ${t("editor.markerAction")}
-          <select .value=${marker.action?.tap ?? "more-info"} @change=${actions.updateMarkerAction}>
-            <option value="more-info">${t("editor.actionDetails")}</option>
-            <option value="toggle">${t("editor.actionToggle")}</option>
-            <option value="none">${t("editor.actionNone")}</option>
-          </select>
-        </label>
-        <label>
-          ${t("editor.primary")}
-          <select
-            .value=${marker.bind.primary.source}
-            @change=${(event: Event) => actions.updateMarkerBinding("primary", "source", event)}
-          >
-            <option value="state">${t("editor.state")}</option>
-            <option value="attr">${t("editor.attributeOption")}</option>
-          </select>
-        </label>
-        <label>
-          ${t("editor.attribute")}
-          <input
-            .value=${marker.bind.primary.attr ?? ""}
-            @change=${(event: Event) => actions.updateMarkerBinding("primary", "attr", event)}
-          />
-        </label>
-        <label>
-          ${t("editor.format")}
-          <input
-            .value=${marker.bind.primary.format ?? ""}
-            @change=${(event: Event) => actions.updateMarkerBinding("primary", "format", event)}
-            placeholder="{value} °C"
-          />
-        </label>
-        ${marker.bind.secondary
-          ? html`
-              <label>
-                ${t("editor.secondary")}
-                <select
-                  .value=${marker.bind.secondary.source}
-                  @change=${(event: Event) =>
-                    actions.updateMarkerBinding("secondary", "source", event)}
-                >
-                  <option value="state">${t("editor.state")}</option>
-                  <option value="attr">${t("editor.attributeOption")}</option>
-                </select>
-              </label>
-              <label>
-                ${t("editor.attribute")}
-                <input
-                  .value=${marker.bind.secondary.attr ?? ""}
-                  @change=${(event: Event) =>
-                    actions.updateMarkerBinding("secondary", "attr", event)}
-                />
-              </label>
-              <label>
-                ${t("editor.format")}
-                <input
-                  .value=${marker.bind.secondary.format ?? ""}
-                  @change=${(event: Event) =>
-                    actions.updateMarkerBinding("secondary", "format", event)}
-                />
-              </label>
-              <button type="button" @click=${actions.removeMarkerSecondaryBinding}>
-                ${t("editor.removeSecondary")}
-              </button>
-            `
-          : html`
-              <button type="button" @click=${actions.addMarkerSecondaryBinding}>
-                + ${t("editor.addSecondary")}
-              </button>
-            `}
-        <button
-          class="editor-danger editor-field-wide"
-          type="button"
-          @click=${actions.deleteMarker}
-        >
-          ${t("editor.deleteMarker")}
-        </button>
-      </div>
-    </section>
   `;
 }

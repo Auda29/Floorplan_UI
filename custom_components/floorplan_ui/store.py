@@ -68,7 +68,7 @@ class FloorplanStore(ConfigModel):
                     plans = metadata.get("plans", [])
                     for plan in plans if isinstance(plans, list) else []:
                         background = plan.get("background") if isinstance(plan, dict) else None
-                        if not isinstance(background, dict):
+                        if not isinstance(background, dict) or background.get("type") != "image":
                             continue
                         url = background.get("url")
                         if isinstance(url, str) and url.startswith("data:"):
@@ -175,7 +175,7 @@ class FloorplanStore(ConfigModel):
             if not isinstance(plan, dict):
                 continue
             background = plan.get("background")
-            if not isinstance(background, dict):
+            if not isinstance(background, dict) or background.get("type") != "image":
                 continue
             url = background.get("url")
             if not isinstance(url, str) or not url.startswith("data:"):
@@ -201,7 +201,7 @@ class FloorplanStore(ConfigModel):
         allow_embedded_images: bool = False,
         current_config: dict[str, Any] | None = None,
     ) -> None:
-        """Validate new image references without blocking repairs to existing plans."""
+        """Validate new asset references without blocking repairs to existing plans."""
         current_backgrounds = {
             plan["plan_id"]: plan["background"] for plan in (current_config or {}).get("plans", [])
         }
@@ -220,4 +220,6 @@ class FloorplanStore(ConfigModel):
                 # Each affected plan can then be repaired independently.
                 continue
             if not await self._asset_store.async_exists(asset_id, content_type):
-                raise ValueError(f"Plan {plan_index} references a missing image asset")
+                raise ValueError(
+                    f"Plan {plan_index} references a missing {background['type']} asset"
+                )

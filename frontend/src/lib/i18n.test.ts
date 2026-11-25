@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createLocalizer } from "./i18n";
+import { createLocalizer, translations } from "./i18n";
 
 describe("i18n", () => {
+  it("provides a German translation for every English key", () => {
+    for (const key of Object.keys(translations.en) as (keyof typeof translations.en)[])
+      expect(translations.de[key].trim(), key).not.toBe("");
+  });
   it("uses German for Home Assistant German locales", () => {
     const t = createLocalizer("de-DE");
     expect(t("panel.edit")).toBe("Bearbeiten");

@@ -4,15 +4,26 @@
  */
 
 export type {
+  AggregateValueSpec,
+  Anchor3DShape,
   Area as AreaShape,
   Background as FloorplanBackground,
   Badge as BadgeSpec,
+  CameraPreset,
+  EntityValueSpec,
   FloorplanUIConfiguration as FloorplanConfig,
+  ImageBackground,
   Marker,
+  MeshShape,
+  ModelBackground,
   Plan,
+  PolygonShape,
+  RectShape,
   ValueBinding,
   ValueSpec,
+  Vec3,
   View,
+  ViewStyle,
 } from "./floorplan-config.generated";
 
 export interface HomeAssistant {

@@ -14,7 +14,7 @@
     "version": {
       "type": "integer",
       "minimum": 1,
-      "maximum": 3
+      "maximum": 4
     },
     "revision": {
       "type": "integer",
@@ -41,6 +41,16 @@
   "additionalProperties": false,
   "$defs": {
     "background": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/imageBackground"
+        },
+        {
+          "$ref": "#/$defs/modelBackground"
+        }
+      ]
+    },
+    "imageBackground": {
       "type": "object",
       "required": [
         "type",
@@ -53,17 +63,19 @@
         },
         "asset_id": {
           "type": "string",
-          "pattern": "^[0-9a-f]{64}$"
+          "pattern": "^[0-9a-f]{64}$",
+          "maxLength": 64
         },
         "content_type": {
           "enum": [
             "image/png",
-            "image/jpeg"
+            "image/jpeg",
+            "image/svg+xml"
           ]
         },
         "url": {
           "type": "string",
-          "description": "Transient signed URL or portable PNG/JPEG data URL; never persisted for asset-backed images."
+          "description": "Transient signed URL or portable PNG, JPEG or SVG data URL."
         },
         "width": {
           "type": "number",
@@ -84,6 +96,82 @@
         "content_type": [
           "asset_id"
         ]
+      },
+      "if": {
+        "not": {
+          "required": [
+            "asset_id"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "url": {
+            "pattern": "^(?:$|data:image/(?:png|jpeg|svg\\+xml);base64,[A-Za-z0-9+/]+={0,2}$)"
+          }
+        }
+      }
+    },
+    "modelBackground": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "model"
+        },
+        "asset_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "maxLength": 64
+        },
+        "content_type": {
+          "const": "model/gltf-binary"
+        },
+        "url": {
+          "type": "string",
+          "description": "Transient signed URL for the GLB asset.",
+          "pattern": "^(?!\\s*[dD][aA][tT][aA]:)"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 50000
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 50000
+        },
+        "unit_scale": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000
+        }
+      },
+      "additionalProperties": false,
+      "dependentRequired": {
+        "asset_id": [
+          "content_type"
+        ],
+        "content_type": [
+          "asset_id"
+        ]
+      },
+      "if": {
+        "not": {
+          "required": [
+            "asset_id"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "url": {
+            "const": ""
+          }
+        }
       }
     },
     "rectShape": {
@@ -4138,6 +4226,71 @@
       },
       "additionalProperties": false
     },
+    "vec3": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "meshShape": {
+      "type": "object",
+      "required": [
+        "type",
+        "mesh_name"
+      ],
+      "properties": {
+        "type": {
+          "const": "mesh"
+        },
+        "mesh_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "anchor": {
+          "$ref": "#/$defs/vec3"
+        }
+      },
+      "additionalProperties": false
+    },
+    "anchor3dShape": {
+      "type": "object",
+      "required": [
+        "type",
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "type": {
+          "const": "anchor3d"
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
     "areaStyle": {
       "type": "object",
       "required": [
@@ -4191,6 +4344,12 @@
             },
             {
               "$ref": "#/$defs/polygonShape"
+            },
+            {
+              "$ref": "#/$defs/meshShape"
+            },
+            {
+              "$ref": "#/$defs/anchor3dShape"
             }
           ]
         },
@@ -4286,6 +4445,9 @@
             },
             "y": {
               "type": "number"
+            },
+            "z": {
+              "type": "number"
             }
           },
           "additionalProperties": false
@@ -4338,6 +4500,43 @@
       },
       "additionalProperties": true
     },
+    "cameraPreset": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "mode",
+        "position",
+        "target"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "enum": [
+            "ortho",
+            "perspective"
+          ]
+        },
+        "position": {
+          "$ref": "#/$defs/vec3"
+        },
+        "target": {
+          "$ref": "#/$defs/vec3"
+        },
+        "zoom": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "plan": {
       "type": "object",
       "required": [
@@ -4355,7 +4554,8 @@
         },
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "\\S"
         },
         "background": {
           "$ref": "#/$defs/background"
@@ -4388,12 +4588,82 @@
             "maxZoom": {
               "type": "number",
               "exclusiveMinimum": 0
+            },
+            "shadows": {
+              "type": "boolean"
+            },
+            "lighting": {
+              "type": "boolean"
+            },
+            "camera_mode": {
+              "enum": [
+                "ortho",
+                "perspective"
+              ]
+            },
+            "camera_presets": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "$ref": "#/$defs/cameraPreset"
+              }
             }
           },
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "background": {
+            "properties": {
+              "type": {
+                "const": "model"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "areas": {
+            "items": {
+              "properties": {
+                "shape": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "mesh",
+                        "anchor3d"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "areas": {
+            "items": {
+              "properties": {
+                "shape": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "rect",
+                        "polygon"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "filters": {
       "type": "object",
@@ -4420,6 +4690,16 @@
       "additionalProperties": false
     },
     "valueSpec": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/entityValueSpec"
+        },
+        {
+          "$ref": "#/$defs/aggregateValueSpec"
+        }
+      ]
+    },
+    "entityValueSpec": {
       "type": "object",
       "required": [
         "mode",
@@ -4469,6 +4749,42 @@
           }
         }
       ],
+      "additionalProperties": false
+    },
+    "aggregateValueSpec": {
+      "type": "object",
+      "required": [
+        "mode",
+        "aggregation"
+      ],
+      "properties": {
+        "mode": {
+          "const": "aggregate"
+        },
+        "aggregation": {
+          "enum": [
+            "count_on",
+            "count_open",
+            "count",
+            "avg",
+            "min",
+            "max",
+            "sum"
+          ]
+        },
+        "domain": {
+          "type": "string"
+        },
+        "device_class": {
+          "type": "string"
+        },
+        "attr": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        }
+      },
       "additionalProperties": false
     },
     "badge": {
@@ -4523,6 +4839,34 @@
       },
       "additionalProperties": false
     },
+    "viewStyle": {
+      "type": "object",
+      "properties": {
+        "dim_inactive_areas": {
+          "type": "boolean"
+        },
+        "inactive_area_opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "highlight_active_areas": {
+          "type": "boolean"
+        },
+        "active_area_fill": {
+          "type": "string"
+        },
+        "active_area_stroke": {
+          "type": "string"
+        },
+        "active_area_opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "additionalProperties": false
+    },
     "view": {
       "type": "object",
       "required": [
@@ -4537,7 +4881,8 @@
         },
         "name": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "\\S"
         },
         "filters": {
           "$ref": "#/$defs/filters"
@@ -4547,6 +4892,13 @@
         },
         "marker_overlay": {
           "$ref": "#/$defs/overlay"
+        },
+        "style": {
+          "$ref": "#/$defs/viewStyle"
+        },
+        "camera_preset_id": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "additionalProperties": false

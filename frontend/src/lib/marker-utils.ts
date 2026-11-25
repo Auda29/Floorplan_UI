@@ -7,6 +7,7 @@ import type {
   ValueSpec,
   View,
 } from "../types/home-assistant";
+import { resolveAreaAggregate } from "./area-aggregates";
 
 const UNAVAILABLE_STATES = ["unavailable", "unknown"];
 
@@ -68,9 +69,20 @@ export function getMarkerValue(
 
 export function resolveValueSpec(
   spec: ValueSpec | undefined,
-  states: Record<string, HassEntity>
+  states: Record<string, HassEntity>,
+  options?: { areaId?: string | null; entities?: HassEntityRegistry[]; markers?: Marker[] }
 ): string {
-  if (!spec?.entity_id) return "";
+  if (!spec) return "";
+  if (spec.mode === "aggregate") {
+    if (!options?.areaId) return "";
+    return resolveAreaAggregate(
+      spec,
+      options.areaId,
+      states,
+      options.entities ?? [],
+      options.markers ?? []
+    );
+  }
   return resolveValueBinding(spec, states[spec.entity_id]);
 }
 

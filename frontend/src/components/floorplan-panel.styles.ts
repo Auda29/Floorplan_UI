@@ -945,4 +945,113 @@ export const floorplanPanelStyles = css`
       padding-inline-start: 6px;
     }
   }
+
+  .entity-palette {
+    overflow-anchor: none;
+  }
+
+  .entity-palette > [aria-hidden="true"] {
+    pointer-events: none;
+  }
+
+  .editor-fields label:has(input[list="floorplan-mdi-icons"]) {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .editor-fields label:has(input[list="floorplan-mdi-icons"]) > input {
+    grid-column: 1 / -1;
+  }
+
+  .map-dock[data-3d] {
+    flex-wrap: wrap;
+  }
+  .map-dock[data-3d] .map-zoom {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .map-zoom .camera-tool {
+    padding-inline: 7px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .canvas-wrapper .floorplan-three-chip[data-interactive] {
+    min-height: 44px;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 18%);
+  }
+
+  .warning-center button {
+    min-height: 44px;
+  }
+  .warning-badge,
+  .warning-center button {
+    padding: 4px 8px;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--sheet);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .warning-badge {
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .warning-badge.has-errors {
+    border-color: var(--error-color, #b42318);
+  }
+
+  .warning-center {
+    position: absolute;
+    background: var(--sheet);
+    z-index: 5;
+    inset-block-start: 54px;
+    inset-inline-end: 12px;
+    width: min(420px, calc(100% - 24px));
+    max-height: calc(100% - 68px);
+    overflow: auto;
+    box-sizing: border-box;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 20%);
+  }
+  .warning-center header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .warning-center ul {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+  }
+  .warning-center li {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px 8px;
+    padding-block: 8px;
+    border-top: 1px solid var(--rule);
+    overflow-wrap: anywhere;
+  }
+  .warning-center li small {
+    grid-column: 2;
+    color: var(--muted);
+  }
+  .warning-center li button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .narrow .map-dock button,
+  .narrow .placement-prompt button {
+    min-height: 44px;
+  }
+
+  @media (max-width: 899px) {
+    .map-dock button,
+    .placement-prompt button,
+    .canvas-container .empty-state button,
+    .canvas-container .panel-feedback button {
+      min-height: 44px;
+    }
+  }
 `;

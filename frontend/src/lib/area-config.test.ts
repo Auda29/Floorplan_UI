@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { FloorplanConfig, Plan } from "../types/home-assistant";
-import { addArea, createArea, removeArea, updateArea, updateAreaShape } from "./area-config";
+import {
+  addArea,
+  createAnchor3DArea,
+  createArea,
+  createMeshArea,
+  removeArea,
+  updateArea,
+  updateAreaShape,
+} from "./area-config";
 
 function config(): FloorplanConfig {
   const plan: Plan = {
@@ -50,6 +58,34 @@ describe("area config", () => {
     }
     expect(beforeShape.width).toBe(240);
     expect(afterShape.width).toBe(300);
+  });
+
+  it("creates mesh and anchor areas and applies explicit 3D geometry updates", () => {
+    const position = { x: 1, y: 2, z: 3 };
+    const mesh = createMeshArea("mesh", "Kitchen", position);
+    const anchor = createAnchor3DArea("anchor", position);
+    expect(mesh).toMatchObject({
+      id: "mesh",
+      shape: { type: "mesh", mesh_name: "Kitchen", anchor: position },
+    });
+    expect(createMeshArea("unanchored", "Kitchen").shape).toEqual({
+      type: "mesh",
+      mesh_name: "Kitchen",
+    });
+    expect(anchor.shape).toEqual({ type: "anchor3d", ...position });
+    const original = config();
+    original.plans[0].background = { type: "model" };
+    original.plans[0].areas = [mesh, anchor];
+
+    const ignored = updateAreaShape(original, "plan-1", mesh.id, {
+      x: 99,
+      points: [0, 0, 1, 1, 2, 2],
+    });
+    expect(ignored.plans[0].areas[0]).toBe(mesh);
+    const changedShape = { type: "anchor3d" as const, ...position, z: 4 };
+    const updated = updateAreaShape(original, "plan-1", anchor.id, changedShape);
+    expect(updated.plans[0].areas[1].shape).toEqual(changedShape);
+    expect(original.plans[0].areas[1].shape).toEqual({ type: "anchor3d", ...position });
   });
 
   it("updates area metadata and removes the area", () => {

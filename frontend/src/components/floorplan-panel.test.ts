@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   saveFloorplanConfig: vi.fn(),
   validateFloorplanConfig: vi.fn(),
   uploadFloorplanImage: vi.fn(),
+  createThreeViewport: vi.fn(),
 }));
 
 vi.mock("konva", () => {
@@ -50,6 +51,8 @@ vi.mock("../lib/asset-api", async (importOriginal) => {
     uploadFloorplanImage: mocks.uploadFloorplanImage,
   };
 });
+
+vi.mock("../lib/three-viewport", () => ({ createThreeViewport: mocks.createThreeViewport }));
 
 import { FloorplanPanel } from "./floorplan-panel";
 
@@ -107,7 +110,17 @@ function button(panel: FloorplanPanel, label: string): HTMLButtonElement {
   return match;
 }
 
+function change(input: HTMLInputElement | HTMLSelectElement, value: string) {
+  input.value = value;
+  input.dispatchEvent(new Event("change"));
+}
+
+function lastSaved(): FloorplanConfig | undefined {
+  return mocks.saveFloorplanConfig.mock.calls.at(-1)?.[1] as FloorplanConfig | undefined;
+}
+
 beforeEach(() => {
+  mocks.createThreeViewport.mockReset();
   mocks.loadFloorplanConfig.mockReset().mockResolvedValue(config());
   mocks.loadRegistry.mockReset().mockResolvedValue({
     areas: [{ id: "living", name: "Living room" }],
@@ -358,5 +371,165 @@ describe("floorplan panel", () => {
     await expect(restored).resolves.toMatchObject({
       plans: [{ areas: [{ shape: { type: "rect" } }], markers: [{ entity_id: "light.kitchen" }] }],
     });
+  });
+
+  it("creates a 3D controller only for model plans and syncs view, edit mode, and mesh diagnostics", async () => {
+    const initial = config();
+    initial.views.push({ id: "top", name: "Top view", filters: {}, camera_preset_id: "top" });
+    initial.plans.push({
+      ...initial.plans[0],
+      plan_id: "model",
+      name: "Model",
+      background: { type: "model", url: "/house.glb" },
+      areas: [
+        {
+          id: "room",
+          area_id: "living",
+          shape: { type: "mesh", mesh_name: "MissingMesh" },
+          style: { fillOpacity: 0.4, strokeWidth: 2 },
+          tags: [],
+        },
+      ],
+    });
+    const controller = {
+      ready: Promise.resolve(true),
+      getAvailableMeshes: vi.fn(() => ["RoomMesh"]),
+      applyCameraPreset: vi.fn(() => true),
+      getCameraPreset: vi.fn(() => ({ mode: "ortho" })),
+      update: vi.fn(),
+      focusArea: vi.fn(() => true),
+      destroy: vi.fn(),
+    };
+    mocks.createThreeViewport.mockReturnValue(controller);
+    mocks.loadFloorplanConfig.mockResolvedValue(initial);
+    const panel = await mount(true);
+    expect(mocks.createThreeViewport).not.toHaveBeenCalled();
+    const plan = panel.shadowRoot!.querySelector<HTMLSelectElement>(".plan-select select")!;
+    change(plan, "model");
+    await vi.waitFor(() => expect(controller.getAvailableMeshes).toHaveBeenCalledOnce());
+    button(panel, "Edit").click();
+    await panel.updateComplete;
+    expect(controller.update).toHaveBeenLastCalledWith(expect.objectContaining({ editMode: true }));
+    button(panel, "Top view").click();
+    await panel.updateComplete;
+    expect(controller.applyCameraPreset).toHaveBeenLastCalledWith("top");
+
+    button(panel, "Warnings (2)").click();
+    await panel.updateComplete;
+    const warning = [...panel.shadowRoot!.querySelectorAll(".warning-center li")].find((item) =>
+      item.textContent?.includes("MissingMesh")
+    );
+    warning!.querySelector("button")!.click();
+    await vi.waitFor(() => expect(controller.focusArea).toHaveBeenCalledWith("room"));
+    expect(panel.shadowRoot?.querySelector(".warning-center")).toBeNull();
+    expect(panel.shadowRoot?.querySelector(".editor-selection-name")?.textContent).toBe("room");
+    expect(
+      [...panel.shadowRoot!.querySelectorAll("option")].some(
+        (option) => option.value === "RoomMesh"
+      )
+    ).toBe(true);
+
+    change(plan, "ground");
+    await panel.updateComplete;
+    expect(controller.destroy).toHaveBeenCalledOnce();
+    expect(mocks.createThreeViewport).toHaveBeenCalledOnce();
+  });
+
+  it("uploads an SVG identified by its extension and reads dimensions from its viewBox", async () => {
+    const panel = await mount(true);
+    mocks.uploadFloorplanImage.mockResolvedValue({
+      asset_id: "b".repeat(64),
+      content_type: "image/svg+xml",
+      url: "/floor.svg",
+    });
+    const file = new File([], "floor.svg");
+    Object.defineProperty(file, "text", {
+      value: async () => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450"/>',
+    });
+    const input = panel.shadowRoot!.querySelector(".file-input")!;
+    Object.defineProperty(input, "files", { value: [file] });
+    input.dispatchEvent(new Event("change"));
+    await vi.waitFor(() =>
+      expect(lastSaved()?.plans.at(-1)?.background).toMatchObject({
+        type: "image",
+        width: 900,
+        height: 450,
+        content_type: "image/svg+xml",
+      })
+    );
+    expect(createImageBitmap).not.toHaveBeenCalled();
+  });
+
+  it("commits marker icons, area aggregates, and view styling through the editor", async () => {
+    const initial = config();
+    initial.plans[0].markers.push({
+      id: "lamp",
+      entity_id: "light.kitchen",
+      pos: { x: 5, y: 6 },
+      label_mode: "auto",
+      tags: [],
+      bind: { primary: { source: "state" } },
+    });
+    mocks.loadFloorplanConfig.mockResolvedValue(initial);
+    const panel = await mount(true);
+    button(panel, "Edit").click();
+    await panel.updateComplete;
+    button(panel, "Marker for light.kitchen").click();
+    await panel.updateComplete;
+    const icon = panel.shadowRoot!.querySelector<HTMLInputElement>(
+      'input[list="floorplan-mdi-icons"]'
+    )!;
+    const preview = icon.parentElement!.querySelector("path")!;
+    const initialPath = preview.getAttribute("d");
+    icon.value = "mdi:home";
+    icon.dispatchEvent(new Event("input"));
+    expect(preview.getAttribute("d")).not.toBe(initialPath);
+    change(icon, "mdi:home");
+
+    button(panel, "Settings").click();
+    await panel.updateComplete;
+    const overlays = panel.shadowRoot!.querySelector(".editor-advanced")!;
+    const mode = [...overlays.querySelectorAll("select")].find((entry) =>
+      [...entry.options].some((option) => option.value === "aggregate")
+    )!;
+    change(mode, "aggregate");
+    await panel.updateComplete;
+    const checkbox = [
+      ...overlays.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    ].find((entry) => entry.parentElement?.textContent?.includes("Highlight active areas"))!;
+    checkbox.click();
+    await vi.waitFor(() => {
+      expect(lastSaved()?.plans[0].markers[0].icon).toBe("mdi:home");
+      expect(lastSaved()?.views[0]).toMatchObject({
+        area_overlay: { primary: { mode: "aggregate", aggregation: "count_on" } },
+        style: { highlight_active_areas: true },
+      });
+    });
+  });
+
+  it("virtualizes the full entity registry and displays later rows after scrolling", async () => {
+    mocks.loadRegistry.mockResolvedValue({
+      areas: [],
+      entities: Array.from({ length: 300 }, (_, index) => ({
+        entity_id: `sensor.item${String(index).padStart(3, "0")}`,
+        name: null,
+        icon: null,
+        area_id: null,
+        device_id: null,
+        domain: "sensor",
+      })),
+    });
+    const panel = await mount(true);
+    button(panel, "Edit").click();
+    await panel.updateComplete;
+    const palette = panel.shadowRoot!.querySelector<HTMLElement>(".entity-palette")!;
+    expect(palette.querySelectorAll(".entity-card")).toHaveLength(35);
+    expect(palette.textContent).toContain("sensor.item000");
+    palette.scrollTop = 5200;
+    palette.dispatchEvent(new Event("scroll"));
+    await panel.updateComplete;
+    expect(palette.textContent).toContain("sensor.item100");
+    expect(palette.textContent).not.toContain("sensor.item000");
+    expect(palette.querySelectorAll(".entity-card")).toHaveLength(35);
   });
 });

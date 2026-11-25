@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import struct
 from http import HTTPStatus
 
 import pytest
@@ -22,6 +23,10 @@ pytestmark = [
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAAFUlEQVR4nGP8////fwYkwMSABjAEAMIKBALFMvzuAAAAAElFTkSuQmCC"
 )
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="3"/></svg>'
+GLB_JSON = b'{"asset":{"version":"2.0"}}'
+GLB_JSON += b" " * (-len(GLB_JSON) % 4)
+GLB = struct.pack("<4sIII4s", b"glTF", 2, 20 + len(GLB_JSON), len(GLB_JSON), b"JSON") + GLB_JSON
 
 
 async def _setup_yaml(hass) -> None:
@@ -142,6 +147,66 @@ async def test_upload_size_and_magic_are_enforced(
         headers={"Content-Type": "image/png"},
     )
     assert wrong_magic.status == HTTPStatus.BAD_REQUEST
+
+
+@pytest.mark.parametrize(
+    ("data", "upload_type", "stored_type", "background"),
+    [
+        (SVG, "image/svg+xml", "image/svg+xml", {"type": "image", "width": 4, "height": 3}),
+        (GLB, "application/octet-stream", "model/gltf-binary", {"type": "model"}),
+    ],
+)
+async def test_admin_can_upload_and_read_svg_and_glb(
+    hass,
+    hass_client,
+    hass_client_no_auth,
+    hass_ws_client,
+    data,
+    upload_type,
+    stored_type,
+    background,
+) -> None:
+    await _setup_yaml(hass)
+    client = await hass_client()
+    response = await client.post(
+        "/api/floorplan_ui/assets", data=data, headers={"Content-Type": upload_type}
+    )
+    assert response.status == HTTPStatus.CREATED
+    asset = await response.json()
+    assert asset["content_type"] == stored_type
+    assert len(asset["asset_id"]) == 64
+
+    ws_client = await hass_ws_client(hass)
+    config = await _get_config(ws_client)
+    config["plans"] = [
+        {
+            "plan_id": "floor",
+            "name": "Floor",
+            "background": {**background, **asset},
+            "areas": [],
+            "markers": [],
+            "view": {"minZoom": 0.1, "maxZoom": 5},
+        }
+    ]
+    await ws_client.send_json_auto_id(
+        {"type": "floorplan_ui/save_config", "base_revision": config["revision"], "config": config}
+    )
+    assert (await ws_client.receive_json())["success"]
+    stored = await hass.data[DOMAIN]["store"].async_get_config()
+    assert "url" not in stored["plans"][0]["background"]
+
+    config = await _get_config(ws_client)
+    signed_url = config["plans"][0]["background"]["url"]
+    asset_client = await hass_client_no_auth()
+    download = await asset_client.get(signed_url)
+    assert download.status == HTTPStatus.OK
+    assert download.content_type == stored_type
+    assert download.headers["X-Content-Type-Options"] == "nosniff"
+    assert await download.read() == data
+    if stored_type == "image/svg+xml":
+        assert download.headers["Content-Security-Policy"] == (
+            "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+        )
 
 
 async def test_viewer_cannot_upload(

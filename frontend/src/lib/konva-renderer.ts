@@ -9,6 +9,7 @@ import type {
   View,
 } from "../types/home-assistant";
 import type { AreaGeometryUpdate } from "./area-config";
+import { areaHasActiveEntities } from "./area-aggregates";
 import {
   getActiveBadges,
   getDomainGlyph,
@@ -18,6 +19,7 @@ import {
   markerMatchesView,
   resolveValueSpec,
 } from "./marker-utils";
+import { getMdiIconPath, resolveDynamicMdiPath, resolveMdiIconName } from "./mdi-icons";
 
 interface AreaRenderOptions {
   layer: Konva.Layer;
@@ -25,6 +27,7 @@ interface AreaRenderOptions {
   view: View | undefined;
   states: Record<string, HassEntity>;
   areas: HassArea[];
+  entities?: HassEntityRegistry[];
   editMode: boolean;
   selectedAreaId: string | null;
   shapes: Map<string, Konva.Shape>;
@@ -73,11 +76,12 @@ export function renderAreas(options: AreaRenderOptions): void {
   layer.destroyChildren();
   shapes.clear();
   if (!plan) return;
+  const markers = plan.markers ?? [];
 
   for (const area of plan.areas ?? []) {
     if (!options.editMode && !areaMatchesView(area, options.view)) continue;
 
-    const areaShape = createAreaShape(area, options.editMode);
+    const areaShape = createAreaShape(area, options, markers);
     if (!areaShape) continue;
 
     areaShape.on("click tap", (event) => {
@@ -93,7 +97,7 @@ export function renderAreas(options: AreaRenderOptions): void {
 
     layer.add(areaShape);
     shapes.set(area.id, areaShape);
-    addAreaAnnotation(layer, area, areaShape, options.view, options.states, options.areas);
+    addAreaAnnotation(area, areaShape, options, markers);
   }
 
   if (!options.editMode || !options.selectedAreaId) return;
@@ -115,19 +119,41 @@ export function areaMatchesView(area: AreaShape, view: View | undefined): boolea
   return !tagFilter?.length || tagFilter.some((tag) => area.tags.includes(tag));
 }
 
-function createAreaShape(area: AreaShape, draggable: boolean): Konva.Shape | null {
+function createAreaShape(
+  area: AreaShape,
+  { editMode, view, states, entities = [] }: AreaRenderOptions,
+  markers: Marker[]
+): Konva.Shape | null {
   const { shape, style } = area;
+  if (shape.type === "mesh" || shape.type === "anchor3d") return null;
+
+  const appearance = {
+    fill: style.fill ?? "#2196f3",
+    stroke: style.stroke ?? "#1976d2",
+    strokeWidth: style.strokeWidth ?? 2,
+    opacity: style.fillOpacity ?? 0.4,
+    draggable: editMode,
+  };
+  const viewStyle = view?.style;
+  if (!editMode && (viewStyle?.highlight_active_areas || viewStyle?.dim_inactive_areas)) {
+    const active =
+      !!area.area_id &&
+      areaHasActiveEntities(area.area_id, view?.filters?.domains, states, entities, markers);
+    if (active && viewStyle.highlight_active_areas) {
+      appearance.fill = viewStyle.active_area_fill ?? appearance.fill;
+      appearance.stroke = viewStyle.active_area_stroke ?? appearance.stroke;
+      appearance.opacity = viewStyle.active_area_opacity ?? appearance.opacity;
+    } else if (!active && viewStyle.dim_inactive_areas) {
+      appearance.opacity = viewStyle.inactive_area_opacity ?? 0.15;
+    }
+  }
   if (shape.type === "polygon" && (shape.points?.length ?? 0) >= 6) {
     return new Konva.Line({
       x: shape.x ?? 0,
       y: shape.y ?? 0,
       points: shape.points,
       closed: true,
-      fill: style.fill ?? "#2196f3",
-      stroke: style.stroke ?? "#1976d2",
-      strokeWidth: style.strokeWidth ?? 2,
-      opacity: style.fillOpacity ?? 0.4,
-      draggable,
+      ...appearance,
     });
   }
   if (shape.type === "rect") {
@@ -136,30 +162,25 @@ function createAreaShape(area: AreaShape, draggable: boolean): Konva.Shape | nul
       y: shape.y ?? 0,
       width: shape.width ?? 100,
       height: shape.height ?? 80,
-      fill: style.fill ?? "#2196f3",
-      stroke: style.stroke ?? "#1976d2",
-      strokeWidth: style.strokeWidth ?? 2,
-      opacity: style.fillOpacity ?? 0.4,
-      draggable,
+      ...appearance,
     });
   }
   return null;
 }
 
 function addAreaAnnotation(
-  layer: Konva.Layer,
   area: AreaShape,
   areaShape: Konva.Shape,
-  view: View | undefined,
-  states: Record<string, HassEntity>,
-  areas: HassArea[]
+  { layer, view, states, areas, entities = [] }: AreaRenderOptions,
+  markers: Marker[]
 ): void {
   const lines: string[] = [];
   const areaName = areas.find((entry) => entry.id === area.area_id)?.name;
   if (area.area_id) lines.push(areaName ?? area.area_id);
 
-  const primary = resolveValueSpec(view?.area_overlay?.primary, states);
-  const secondary = resolveValueSpec(view?.area_overlay?.secondary, states);
+  const valueOptions = { areaId: area.area_id, entities, markers };
+  const primary = resolveValueSpec(view?.area_overlay?.primary, states, valueOptions);
+  const secondary = resolveValueSpec(view?.area_overlay?.secondary, states, valueOptions);
   if (primary) lines.push(primary);
   if (secondary) lines.push(secondary);
   for (const badge of getActiveBadges(view?.area_overlay?.badges, states)) {
@@ -323,6 +344,7 @@ export function renderMarkers(options: MarkerRenderOptions): void {
 
     layer.add(group);
     groups.set(marker.id, group);
+    updateMarkerIcon(layer, group, marker, state, registryEntry);
   }
   syncSize();
   layer.batchDraw();
@@ -342,24 +364,13 @@ function createMarkerGroup(
   group.add(
     new Konva.Circle({
       name: "marker-dot",
-      radius: 13,
+      radius: 16,
       fill: getMarkerColor(state),
       stroke: "#ffffff",
       strokeWidth: options.selectedMarkerId === marker.id ? 4 : 2,
       shadowColor: "#000000",
       shadowBlur: 5,
       shadowOpacity: 0.25,
-    }),
-    new Konva.Text({
-      x: -10,
-      y: -7,
-      width: 20,
-      align: "center",
-      text: getDomainGlyph(marker.entity_id),
-      fill: "#ffffff",
-      fontSize: 14,
-      fontStyle: "bold",
-      listening: false,
     }),
     new Konva.Rect({
       name: "marker-plate",
@@ -386,7 +397,14 @@ function createMarkerGroup(
       name: "marker-value",
       x: 21,
       y: 1,
-      text: markerValues(marker, state, options.view, options.states),
+      text: markerValues(
+        marker,
+        state,
+        options.view,
+        options.states,
+        options.entities,
+        options.plan?.markers ?? []
+      ),
       fill: "#e0e8ed",
       fontSize: 12,
       padding: 2,
@@ -395,6 +413,62 @@ function createMarkerGroup(
   );
   sizeMarkerPlate(group);
   return group;
+}
+
+const markerIconNames = new WeakMap<Konva.Group, string>();
+
+function updateMarkerIcon(
+  layer: Konva.Layer,
+  group: Konva.Group,
+  marker: Marker,
+  state: HassEntity | undefined,
+  registryEntry: HassEntityRegistry | undefined
+): void {
+  const iconName = resolveMdiIconName(marker.icon, state, registryEntry, marker.entity_id);
+  if (markerIconNames.get(group) === iconName) return;
+  markerIconNames.set(group, iconName);
+
+  group.findOne(".marker-icon-path")?.destroy();
+  group.findOne(".marker-icon-glyph")?.destroy();
+
+  const addPath = (data: string) => {
+    group.add(
+      new Konva.Path({
+        name: "marker-icon-path",
+        x: -9,
+        y: -9,
+        scale: { x: 0.75, y: 0.75 },
+        data,
+        fill: "#ffffff",
+        listening: false,
+      })
+    );
+  };
+  const bundledPath = getMdiIconPath(iconName);
+  if (bundledPath) {
+    addPath(bundledPath);
+    return;
+  }
+
+  const fallback = new Konva.Text({
+    name: "marker-icon-glyph",
+    x: -10,
+    y: -7,
+    width: 20,
+    align: "center",
+    text: getDomainGlyph(marker.entity_id),
+    fill: "#ffffff",
+    fontSize: 14,
+    fontStyle: "bold",
+    listening: false,
+  });
+  group.add(fallback);
+  void resolveDynamicMdiPath(iconName).then((path) => {
+    if (!path || group.getLayer() !== layer || fallback.getParent() !== group) return;
+    fallback.destroy();
+    addPath(path);
+    layer.batchDraw();
+  });
 }
 
 function sizeMarkerPlate(group: Konva.Group) {
@@ -418,16 +492,23 @@ export function refreshMarkerLiveValues(options: MarkerRefreshOptions): void {
     if (!group) continue;
 
     const state = options.states[marker.entity_id];
+    const registryEntry = registryByEntity.get(marker.entity_id);
     const dot = group.findOne(".marker-dot") as Konva.Circle | undefined;
     const value = group.findOne(".marker-value") as Konva.Text | undefined;
     const label = group.findOne(".marker-label") as Konva.Text | undefined;
     dot?.fill(getMarkerColor(state));
-    value?.text(markerValues(marker, state, options.view, options.states));
-    label?.text(
-      marker.label_mode === "off"
-        ? ""
-        : getMarkerLabel(marker, state, registryByEntity.get(marker.entity_id))
+    value?.text(
+      markerValues(
+        marker,
+        state,
+        options.view,
+        options.states,
+        options.entities,
+        options.plan.markers ?? []
+      )
     );
+    label?.text(marker.label_mode === "off" ? "" : getMarkerLabel(marker, state, registryEntry));
+    updateMarkerIcon(options.layer, group, marker, state, registryEntry);
     sizeMarkerPlate(group);
   }
   options.layer.batchDraw();
@@ -437,13 +518,23 @@ function markerValues(
   marker: Marker,
   state: HassEntity | undefined,
   view: View | undefined,
-  states: Record<string, HassEntity>
+  states: Record<string, HassEntity>,
+  entities: HassEntityRegistry[],
+  markers: Marker[]
 ): string {
   const overlay = view?.marker_overlay;
+  const registryEntry = entities.find((entry) => entry.entity_id === marker.entity_id);
+  const aggregateContext = {
+    areaId: marker.area_id ?? registryEntry?.area_id ?? null,
+    entities,
+    markers,
+  };
   const values = [
-    overlay?.primary ? resolveValueSpec(overlay.primary, states) : getMarkerValue(marker, state),
+    overlay?.primary
+      ? resolveValueSpec(overlay.primary, states, aggregateContext)
+      : getMarkerValue(marker, state),
     overlay?.secondary
-      ? resolveValueSpec(overlay.secondary, states)
+      ? resolveValueSpec(overlay.secondary, states, aggregateContext)
       : getMarkerValue(marker, state, "secondary"),
   ]
     .filter(Boolean)

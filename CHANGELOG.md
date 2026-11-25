@@ -6,6 +6,50 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
+### Added
+
+- Upload self-contained binary glTF 2.0 models (`.glb`, up to 25 MB). Explore a
+  plan with orthographic isometric, top-down, front, or perspective cameras.
+  OrbitControls render on demand. Save camera presets per plan and switch cameras
+  by view. Optional shadows and live `light.*` lighting and floor glow show how
+  lights affect each room.
+- Place and drag markers on model surfaces using raycasting. Bind rooms to
+  meshes or set 3D room anchors for projected HTML overlays.
+- Use sanitized SVG floorplans alongside PNG and JPEG images (up to 4 MB each).
+- Choose Material Design Icons (`mdi:*`) in the Marker Inspector. Their SVG paths
+  stay sharp on the 2D Konva canvas and in 3D overlays.
+- Display automatic Home Assistant Area aggregates with `count_on`, `count_open`,
+  `count`, `avg`, `min`, `max`, and `sum`. Filter by domain or device class,
+  select a numeric attribute, and format the result.
+- Use `View.style` to dim inactive rooms or highlight active rooms in 2D and 3D.
+- Open the Warning Center in Edit mode to jump to missing or unavailable
+  entities, unbound or missing areas, invalid attribute bindings, missing
+  backgrounds, and missing 3D meshes.
+- Browse large installations with a virtualized entity library. Contextual
+  tooltips and inline help explain editor controls.
+
+### Changed
+
+- Vite loads Three.js on demand when opening a 3D plan. A 2D-only session
+  downloads 0 KB of Three.js.
+- Split drag handling, backups, configuration mutations, the inspector, settings,
+  and warnings into dedicated modules, reducing `floorplan-panel.ts` from 1,921
+  to about 999 lines.
+- Configuration schema v4 automatically migrates existing v1–v3 plans.
+
+### Security
+
+- Pure-Python GLB validation checks the glTF 2.0 header, chunk bounds, JSON
+  chunk size, accessor/vertex counts, and embedded texture dimensions, and
+  rejects external buffer/image URIs as well as unsupported compression
+  extensions (`KHR_draco_mesh_compression`, `EXT_meshopt_compression`,
+  `KHR_texture_basisu`).
+- Pure-Python SVG validation rejects DOCTYPE and ENTITY declarations, scripts,
+  `foreignObject`, event handlers, and external or active URLs. SVG responses
+  carry a sandboxed Content Security Policy.
+
 ## [0.3.0] - 2026-11-18
 
 ### Changed
@@ -223,7 +267,8 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.4...v0.2.0
 [0.2.0-beta.4]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.3...v0.2.0-beta.4

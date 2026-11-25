@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import importlib
+import json
+import struct
 import sys
 import tempfile
 import threading
@@ -43,6 +45,7 @@ FloorplanAssetStore = ASSET_MODULE.FloorplanAssetStore
 collect_referenced_asset_ids = ASSET_MODULE.collect_referenced_asset_ids
 decode_image_data_url = ASSET_MODULE.decode_image_data_url
 validate_image_bytes = ASSET_MODULE.validate_image_bytes
+validate_glb_bytes = ASSET_MODULE.validate_glb_bytes
 
 
 def image_bytes(image_format: str, size: tuple[int, int] = (4, 3)) -> bytes:
@@ -55,6 +58,22 @@ def image_bytes(image_format: str, size: tuple[int, int] = (4, 3)) -> bytes:
 
 PNG = image_bytes("PNG")
 JPEG = image_bytes("JPEG")
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="8"/></svg>'
+
+
+def make_glb(document: dict | bytes, binary: bytes = b"", *, trailing: bytes = b"") -> bytes:
+    """Build a GLB with aligned JSON and optional BIN chunks."""
+    raw_json = json.dumps(document).encode() if isinstance(document, dict) else document
+    raw_json += b" " * (-len(raw_json) % 4)
+    chunks = struct.pack("<I4s", len(raw_json), b"JSON") + raw_json
+    if binary:
+        binary = binary.ljust(len(binary) + (-len(binary) % 4), b"\0")
+        chunks += struct.pack("<I4s", len(binary), b"BIN\0") + binary
+    chunks += trailing
+    return struct.pack("<4sII", b"glTF", 2, 12 + len(chunks)) + chunks
+
+
+GLB = make_glb({"asset": {"version": "2.0"}})
 
 
 class AssetValidationTests(unittest.TestCase):
@@ -84,13 +103,144 @@ class AssetValidationTests(unittest.TestCase):
             validate_image_bytes(output.getvalue(), "image/png")
 
     def test_embedded_data_url_is_strictly_validated(self) -> None:
-        import base64
-
         data, content_type = decode_image_data_url(
             f"data:image/png;base64,{base64.b64encode(PNG).decode('ascii')}"
         )
         self.assertEqual(PNG, data)
         self.assertEqual("image/png", content_type)
+
+    def test_svg_supports_local_styles_and_portable_data_urls(self) -> None:
+        encoded_png = base64.b64encode(PNG).decode()
+        svg = f"""<?xml version="1.0" encoding="UTF-8"?>
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+          <style>rect {{ fill: url("#gradient"); }}</style>
+          <defs><linearGradient id="gradient"/><rect id="room"/></defs>
+          <use xlink:href="#room"/>
+          <image href="data:image/png;base64,{encoded_png}"/>
+        </svg>""".encode()
+        url = "data:image/svg+xml;base64," + base64.b64encode(svg).decode()
+        self.assertEqual((svg, "image/svg+xml"), decode_image_data_url(url))
+
+    def test_svg_rejects_unsafe_xml_and_external_references(self) -> None:
+        for svg in (
+            b"<svg><script/></svg>",
+            b'<svg onload=""/>',
+            b"<svg><foreignObject/></svg>",
+            b"<!DOCTYPE svg><svg/>",
+            b'<!DOCTYPE svg [<!ENTITY forbidden "value">]><svg/>',
+            b'<?xml-stylesheet href="style.css"?><svg/>',
+            b'<svg><use href="javascript:"/></svg>',
+            b'<svg><image href="//example.com/image.png"/></svg>',
+            b'<svg><image href="image.png"/></svg>',
+            b'<svg><image href="data:image/svg+xml;base64,PHN2Zy8+"/></svg>',
+            b'<svg><image href="data:image/png;base64,invalid!"/></svg>',
+            b"<svg><style>@import 'style.css';</style></svg>",
+            b'<svg><style>rect {fill: url("https://example.com/image.svg");}</style></svg>',
+            b'<svg><rect style="fill: url(//example.com/image.svg)"/></svg>',
+            b'<svg><rect fill="url(file:///image.svg)"/></svg>',
+            b"<svg>\xff</svg>",
+            "<svg/>".encode("utf-16-le"),
+            b"<html/>",
+        ):
+            with self.subTest(svg=svg), self.assertRaises(AssetValidationError):
+                validate_image_bytes(svg, "image/svg+xml")
+
+    def test_glb_supports_bin_chunk_and_embedded_images(self) -> None:
+        validate_glb_bytes(GLB)
+        validate_glb_bytes(
+            make_glb(
+                {
+                    "asset": {"version": "2.0"},
+                    "buffers": [{"byteLength": len(PNG)}],
+                    "bufferViews": [{"buffer": 0, "byteLength": len(PNG)}],
+                    "images": [
+                        {"bufferView": 0, "mimeType": "image/png"},
+                        {"uri": f"data:image/png;base64,{base64.b64encode(PNG).decode()}"},
+                    ],
+                    "extensionsUsed": ["KHR_lights_punctual"],
+                },
+                PNG,
+            )
+        )
+
+    def test_glb_rejects_bad_headers_and_chunks(self) -> None:
+        cases = {
+            "magic": b"glTz" + GLB[4:],
+            "version": GLB[:4] + struct.pack("<I", 1) + GLB[8:],
+            "truncated header": GLB[:15],
+            "truncated body": GLB[:-1],
+            "unaligned chunk": GLB[:12] + struct.pack("<I", 25) + GLB[16:],
+            "missing JSON type": GLB[:16] + b"BIN\0" + GLB[20:],
+            "malformed JSON": make_glb(b'{"asset":'),
+            "invalid UTF-8": make_glb(b'{"asset":"\xff"}'),
+            "non-finite JSON": make_glb(b'{"asset":{"version":"2.0"},"extra":NaN}'),
+            "duplicate key": make_glb(b'{"asset":{"version":"2.0","version":"2.0"}}'),
+            "unknown second chunk": make_glb(
+                {"asset": {"version": "2.0"}}, trailing=struct.pack("<I4s", 0, b"JUNK")
+            ),
+            "extra chunk": make_glb({"asset": {"version": "2.0"}}, b"abcd", trailing=b"garbage!"),
+            "oversized JSON": make_glb(b" " * (ASSET_MODULE.MAX_GLB_JSON_CHUNK_BYTES + 1)),
+            "oversized model": GLB.ljust(ASSET_MODULE.MAX_MODEL_FILE_BYTES + 1, b" "),
+        }
+        for name, sample in cases.items():
+            with self.subTest(name=name), self.assertRaises(AssetValidationError):
+                validate_glb_bytes(sample)
+
+    def test_glb_rejects_invalid_buffers_and_images(self) -> None:
+        cases = (
+            {"asset": {"version": "1.0"}},
+            {"buffers": {}},
+            {"buffers": [{"uri": "external.bin"}]},
+            {"buffers": [{"uri": "data:application/octet-stream;base64,YQ=="}]},
+            {"buffers": [{"byteLength": 5}]},
+            {"buffers": [{"byteLength": True}]},
+            {"buffers": [{"byteLength": -1}]},
+            {"images": {}},
+            {"images": [{"uri": "https://example.com/texture.png"}]},
+            {"images": [{"uri": "texture.png", "bufferView": 0}]},
+            {"images": [{"uri": "data:image/svg+xml;base64,PHN2Zy8+"}]},
+            {"images": [{"uri": "data:image/webp;base64,invalid!"}]},
+            {"images": [{"bufferView": False}]},
+            {"images": [{}]},
+            {"extensionsRequired": ["KHR_draco_mesh_compression"]},
+            {"extensionsRequired": ["EXT_meshopt_compression"]},
+            {"extensionsRequired": ["KHR_texture_basisu"]},
+            {"accessors": [{"count": 2_000_001}]},
+            {"bufferViews": [{"byteOffset": 0, "byteLength": 8}]},
+            {"images": [{"bufferView": 0}], "bufferViews": [{"byteOffset": 0, "byteLength": 4}]},
+        )
+        for fields in cases:
+            with self.subTest(fields=fields), self.assertRaises(AssetValidationError):
+                validate_glb_bytes(make_glb({"asset": {"version": "2.0"}, **fields}, b"abcd"))
+
+    def test_glb_accepts_valid_embedded_bufferview_png_and_rejects_oversized_texture(self) -> None:
+        padded_png = PNG + b"\x00" * ((4 - len(PNG) % 4) % 4)
+        valid_doc = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": len(padded_png)}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": len(PNG)}],
+            "images": [{"bufferView": 0, "mimeType": "image/png"}],
+        }
+        validate_glb_bytes(make_glb(valid_doc, padded_png))
+
+        bomb_png = BytesIO()
+        Image.new("RGB", (ASSET_MODULE.MAX_IMAGE_WIDTH + 1, 1), color=(0, 0, 0)).save(
+            bomb_png, format="PNG"
+        )
+        bomb_bytes = bomb_png.getvalue()
+        padded_bomb = bomb_bytes + b"\x00" * ((4 - len(bomb_bytes) % 4) % 4)
+        bomb_doc = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": len(padded_bomb)}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": len(bomb_bytes)}],
+            "images": [{"bufferView": 0, "mimeType": "image/png"}],
+        }
+        with self.assertRaises(AssetValidationError):
+            validate_glb_bytes(make_glb(bomb_doc, padded_bomb))
+
+    def test_model_data_url_is_unavailable(self) -> None:
+        with self.assertRaises(AssetValidationError):
+            decode_image_data_url("data:model/gltf-binary;base64," + base64.b64encode(GLB).decode())
 
 
 class AssetReferenceTests(unittest.TestCase):
@@ -99,7 +249,7 @@ class AssetReferenceTests(unittest.TestCase):
             "plans": [
                 {"background": {"asset_id": "a" * 64}},
                 {"background": {"asset_id": "a" * 64}},
-                {"background": {"asset_id": "b" * 64}},
+                {"background": {"type": "model", "asset_id": "b" * 64}},
                 {"background": {"asset_id": "unsafe"}},
             ]
         }
@@ -232,6 +382,29 @@ class AssetGarbageCollectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(fresh_path.exists())
         self.assertTrue(invalid_path.exists())
 
+    async def test_glb_and_svg_use_the_same_garbage_collection_grace_period(self) -> None:
+        svg = await self.store.async_store(SVG, "image/svg+xml")
+        glb = await self.store.async_store(GLB, "model/gltf-binary")
+        svg_path = self.store.path_for(svg.asset_id, svg.content_type)
+        glb_path = self.store.path_for(glb.asset_id, glb.content_type)
+        self.assertEqual(".svg", svg_path.suffix)
+        self.assertEqual(".glb", glb_path.suffix)
+        self.assertEqual(SVG, svg_path.read_bytes())
+        self.assertEqual(GLB, glb_path.read_bytes())
+
+        self.assertEqual([], await self.store.async_collect_garbage({glb.asset_id}))
+        self.assertEqual([], await self.store.async_collect_garbage(set()))
+        with patch.object(
+            ASSET_MODULE.time,
+            "time",
+            return_value=time.time() + ASSET_MODULE.ASSET_GC_GRACE_SECONDS + 1,
+        ):
+            removed = await self.store.async_collect_garbage(set())
+
+        self.assertCountEqual([svg.asset_id, glb.asset_id], removed)
+        self.assertFalse(svg_path.exists())
+        self.assertFalse(glb_path.exists())
+
     async def test_dry_run_reports_without_deleting_and_is_idempotent(self) -> None:
         orphan = "d" * 64
         orphan_path = self._asset_file(orphan, age_seconds=10_000)
@@ -266,3 +439,17 @@ class AssetGarbageCollectionTests(unittest.IsolatedAsyncioTestCase):
             await restarted.async_store(PNG, "image/png")
             self.assertEqual([], await restarted.async_collect_garbage(set(), grace_seconds=300))
         self.assertTrue(path.exists())
+
+    async def test_gc_skips_symlinked_asset_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as external_dir:
+            target = Path(external_dir)
+            victim = target / f"{'e' * 64}.png"
+            victim.write_bytes(PNG)
+            symlink_dir = Path(self._temporary.name) / "symlinked-assets"
+            symlink_dir.symlink_to(target)
+            self.store._directory = symlink_dir
+
+            removed = await self.store.async_collect_garbage(set(), grace_seconds=0)
+
+            self.assertEqual([], removed)
+            self.assertTrue(victim.exists())

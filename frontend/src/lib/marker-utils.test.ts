@@ -87,6 +87,30 @@ describe("marker display values", () => {
     ).toBe("180 lx");
   });
 
+  it("resolves area aggregates using registry and marker membership", () => {
+    const spec = { mode: "aggregate", aggregation: "count_on", format: "{value} on" } as const;
+    const registryLight = { ...state, entity_id: "light.ceiling" };
+    const states = { [state.entity_id]: state, [registryLight.entity_id]: registryLight };
+    expect(resolveValueSpec(undefined, states)).toBe("");
+    expect(resolveValueSpec(spec, states)).toBe("");
+    expect(
+      resolveValueSpec(spec, states, {
+        areaId: "kitchen",
+        markers: [marker],
+        entities: [
+          {
+            entity_id: registryLight.entity_id,
+            area_id: "kitchen",
+            domain: "light",
+            name: null,
+            icon: null,
+            device_id: null,
+          },
+        ],
+      })
+    ).toBe("2 on");
+  });
+
   it("returns only badges whose state condition matches", () => {
     const badges = getActiveBadges(
       [

@@ -5,7 +5,7 @@ import type {
   HomeAssistant,
 } from "../types/home-assistant";
 
-export const CURRENT_CONFIG_VERSION = 3;
+export const CURRENT_CONFIG_VERSION = 4;
 
 export interface RegistryResult {
   areas: HassArea[];
