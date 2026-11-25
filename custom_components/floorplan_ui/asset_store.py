@@ -41,6 +41,7 @@ _ASSET_ID_PATTERN: Final = re.compile(r"^[0-9a-f]{64}$")
 _ASSET_FILE_PATTERN: Final = re.compile(r"^([0-9a-f]{64})\.(?:png|jpg|svg|glb)$")
 _BASE64_PATTERN: Final = re.compile(r"[A-Za-z0-9+/]*={0,2}")
 _RASTER_DATA_URL_TYPES: Final = ("image/png", "image/jpeg")
+_MAX_SVG_EMBEDDED_PIXELS: Final = MAX_IMAGE_PIXELS * 4
 GLB_MAGIC: Final = b"glTF"
 _GLB_HEADER: Final = struct.Struct("<4sII")
 _GLB_CHUNK_HEADER: Final = struct.Struct("<II")
@@ -125,17 +126,19 @@ def _decode_allowed_image_data_url(
     return data, content_type
 
 
-def _validate_svg_reference(reference: str) -> None:
+def _validate_svg_reference(reference: str) -> int:
     """Allow only document fragments and embedded raster images."""
     if reference.startswith("#"):
-        return
+        return 0
     if reference.startswith("data:"):
-        _decode_allowed_image_data_url(reference, content_types=_RASTER_DATA_URL_TYPES)
-        return
+        data, content_type = _decode_allowed_image_data_url(
+            reference, content_types=_RASTER_DATA_URL_TYPES
+        )
+        return validate_image_bytes(data, content_type)
     raise AssetValidationError("SVG references must be local fragments or embedded PNG/JPEG data")
 
 
-def _validate_svg_css(css: str) -> None:
+def _validate_svg_css(css: str, total_pixels: int) -> int:
     """Reject unsafe CSS and validate every CSS URL, including presentation attributes."""
     css = _SVG_CSS_COMMENT.sub("", css)
     if "\\" in css or _SVG_UNSAFE_CSS.search(css):
@@ -148,10 +151,18 @@ def _validate_svg_css(css: str) -> None:
         reference = css[match.end() : end - 1].strip()
         if reference[:1] in ("'", '"') and reference[-1:] == reference[0]:
             reference = reference[1:-1]
-        _validate_svg_reference(reference)
+        total_pixels = _count_svg_reference_pixels(reference, total_pixels)
+    return total_pixels
 
 
-def _validate_svg(data: bytes) -> None:
+def _count_svg_reference_pixels(reference: str, total_pixels: int) -> int:
+    total_pixels += _validate_svg_reference(reference)
+    if total_pixels > _MAX_SVG_EMBEDDED_PIXELS:
+        raise AssetValidationError("SVG embedded images exceed the total pixel limit")
+    return total_pixels
+
+
+def _validate_svg(data: bytes) -> int:
     """Validate an SVG as inert, self-contained XML."""
     try:
         source = data.decode("utf-8")
@@ -170,6 +181,7 @@ def _validate_svg(data: bytes) -> None:
 
     if root.tag not in ("svg", "{http://www.w3.org/2000/svg}svg"):
         raise AssetValidationError("The SVG must have an svg root element")
+    total_pixels = 0
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1].lower()
         if tag in _SVG_UNSAFE_ELEMENTS:
@@ -177,19 +189,20 @@ def _validate_svg(data: bytes) -> None:
         if tag == "style":
             if len(element):
                 raise AssetValidationError("SVG style elements must contain only CSS text")
-            _validate_svg_css(element.text or "")
+            total_pixels = _validate_svg_css(element.text or "", total_pixels)
         for attribute, value in element.attrib.items():
             name = attribute.rsplit("}", 1)[-1].lower()
             if name.startswith("on") or attribute == "{http://www.w3.org/XML/1998/namespace}base":
                 raise AssetValidationError(f"SVG contains a forbidden {name} attribute")
             if name in ("href", "src"):
-                _validate_svg_reference(value.strip())
+                total_pixels = _count_svg_reference_pixels(value.strip(), total_pixels)
             else:
-                _validate_svg_css(value)
+                total_pixels = _validate_svg_css(value, total_pixels)
+    return total_pixels
 
 
-def validate_image_bytes(data: bytes, content_type: str) -> None:
-    """Validate SVG or fully decode a raster image within the configured limits."""
+def validate_image_bytes(data: bytes, content_type: str) -> int:
+    """Validate an image and return its decoded raster pixel count."""
     if not data:
         raise AssetValidationError("The image is empty")
     if len(data) > MAX_IMAGE_FILE_BYTES:
@@ -197,8 +210,7 @@ def validate_image_bytes(data: bytes, content_type: str) -> None:
             f"The image exceeds the {MAX_IMAGE_FILE_BYTES // 1_000_000} MB limit"
         )
     if content_type == "image/svg+xml":
-        _validate_svg(data)
-        return
+        return _validate_svg(data)
     expected_format = _CONTENT_TYPE_FORMAT.get(content_type)
     if expected_format is None:
         raise AssetValidationError("Only PNG, JPEG and SVG images are supported")
@@ -213,6 +225,10 @@ def validate_image_bytes(data: bytes, content_type: str) -> None:
                     raise AssetValidationError(
                         "The decoded image format does not match the declared content type"
                     )
+                if actual_format == "PNG" and (
+                    getattr(image, "is_animated", False) or getattr(image, "n_frames", 1) > 1
+                ):
+                    raise AssetValidationError("Animated PNG images are not supported")
                 if width > MAX_IMAGE_WIDTH or height > MAX_IMAGE_HEIGHT:
                     raise AssetValidationError(
                         f"The image dimensions exceed {MAX_IMAGE_WIDTH} x {MAX_IMAGE_HEIGHT} pixels"
@@ -230,6 +246,7 @@ def validate_image_bytes(data: bytes, content_type: str) -> None:
         raise AssetValidationError("The image dimensions are unsafe") from err
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as err:
         raise AssetValidationError("The image could not be fully decoded") from err
+    return width * height
 
 
 def decode_image_data_url(data_url: str) -> tuple[bytes, str]:
@@ -275,13 +292,36 @@ def _read_glb_chunk(data: bytes, offset: int, expected_type: int, size_limit: in
     return end
 
 
-_GLB_UNSUPPORTED_REQUIRED_EXTENSIONS: Final = frozenset(
+_GLB_SUPPORTED_REQUIRED_EXTENSIONS: Final = frozenset(
     {
-        "KHR_draco_mesh_compression",
-        "EXT_meshopt_compression",
-        "KHR_texture_basisu",
+        "EXT_materials_bump",
+        "EXT_mesh_gpu_instancing",
+        "EXT_texture_webp",
+        "KHR_lights_punctual",
+        "KHR_materials_anisotropy",
+        "KHR_materials_clearcoat",
+        "KHR_materials_diffuse_roughness",
+        "KHR_materials_dispersion",
+        "KHR_materials_emissive_strength",
+        "KHR_materials_ior",
+        "KHR_materials_iridescence",
+        "KHR_materials_sheen",
+        "KHR_materials_specular",
+        "KHR_materials_transmission",
+        "KHR_materials_unlit",
+        "KHR_materials_volume",
+        "KHR_mesh_quantization",
+        "KHR_texture_transform",
     }
 )
+_GLB_COMPONENT_BYTES: Final = {5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4}
+_GLB_SPARSE_INDEX_STRUCTS: Final = {
+    5121: struct.Struct("B"),
+    5123: struct.Struct("<H"),
+    5125: struct.Struct("<I"),
+}
+_GLB_VECTOR_LENGTHS: Final = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4}
+_GLB_MATRIX_SIDES: Final = {"MAT2": 2, "MAT3": 3, "MAT4": 4}
 _MAX_GLB_ACCESSOR_COUNT: Final = 2_000_000
 _MAX_GLB_TOTAL_ACCESSOR_ELEMENTS: Final = 10_000_000
 _MAX_GLB_IMAGES: Final = 128
@@ -298,6 +338,8 @@ def _validate_glb_raster_dimensions(image_bytes: bytes) -> int:
             with Image.open(BytesIO(image_bytes)) as image:
                 if image.format not in {"PNG", "JPEG", "WEBP"}:
                     raise AssetValidationError("GLB embedded textures must be PNG, JPEG, or WebP")
+                if getattr(image, "is_animated", False) or getattr(image, "n_frames", 1) > 1:
+                    raise AssetValidationError("GLB animated textures are not supported")
                 width, height = image.size
                 if width <= 0 or height <= 0:
                     raise AssetValidationError("GLB embedded texture has invalid dimensions")
@@ -317,6 +359,105 @@ def _validate_glb_raster_dimensions(image_bytes: bytes) -> int:
         raise AssetValidationError("GLB embedded texture dimensions are unsafe") from err
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as err:
         raise AssetValidationError("GLB embedded texture could not be read") from err
+
+
+def _validate_accessor_span(
+    storage: dict[str, Any],
+    buffer_views: list[dict[str, Any]],
+    count: int,
+    alignment: int,
+    element_size: int,
+    packed_stride: int,
+    *,
+    sparse: bool = False,
+) -> int:
+    """Validate the span and return its BIN-relative start offset."""
+    index = storage.get("bufferView")
+    if type(index) is not int or not 0 <= index < len(buffer_views):
+        raise AssetValidationError("GLB accessor bufferView index is invalid")
+    view = buffer_views[index]
+    offset = storage.get("byteOffset", 0)
+    if (
+        type(offset) is not int
+        or offset < 0
+        or offset % alignment
+        or (view.get("byteOffset", 0) + offset) % alignment
+    ):
+        raise AssetValidationError("GLB accessor byteOffset is invalid or misaligned")
+    if sparse and ("byteStride" in view or "target" in view):
+        raise AssetValidationError(
+            "GLB sparse accessor bufferView must not define byteStride or target"
+        )
+    stride = view.get("byteStride", packed_stride)
+    end = offset + ((count - 1) * stride + element_size if count else 0)
+    if stride < packed_stride or end > view["byteLength"]:
+        raise AssetValidationError("GLB accessor byte span exceeds its bufferView or is invalid")
+    return view.get("byteOffset", 0) + offset
+
+
+def _validate_glb_accessor(
+    accessor: dict[str, Any], buffer_views: list[dict[str, Any]], count: int, binary: memoryview
+) -> None:
+    component = accessor.get("componentType")
+    if type(component) is not int or component not in _GLB_COMPONENT_BYTES:
+        raise AssetValidationError("GLB accessor componentType is invalid")
+    component_bytes = _GLB_COMPONENT_BYTES[component]
+    shape = accessor.get("type")
+    if isinstance(shape, str) and shape in _GLB_VECTOR_LENGTHS:
+        alignment = component_bytes
+        element_size = packed_stride = component_bytes * _GLB_VECTOR_LENGTHS[shape]
+    elif isinstance(shape, str) and shape in _GLB_MATRIX_SIDES:
+        side = _GLB_MATRIX_SIDES[shape]
+        column_bytes = component_bytes * side
+        column_stride = ((column_bytes + 3) // 4) * 4
+        alignment = max(component_bytes, 4)
+        # Only the final column of the final matrix can omit its padding.
+        element_size = (side - 1) * column_stride + column_bytes
+        packed_stride = side * column_stride
+    else:
+        raise AssetValidationError("GLB accessor type is invalid")
+
+    if "bufferView" in accessor:
+        _validate_accessor_span(
+            accessor, buffer_views, count, alignment, element_size, packed_stride
+        )
+
+    if "sparse" not in accessor:
+        return
+    sparse = accessor["sparse"]
+    if not isinstance(sparse, dict):
+        raise AssetValidationError("GLB sparse accessor must be an object")
+    sparse_count = sparse.get("count")
+    if type(sparse_count) is not int or not 0 < sparse_count <= count:
+        raise AssetValidationError("GLB sparse accessor count is invalid")
+    indices = sparse.get("indices")
+    values = sparse.get("values")
+    if not isinstance(indices, dict) or not isinstance(values, dict):
+        raise AssetValidationError("GLB sparse accessor indices and values must be objects")
+    index_component = indices.get("componentType")
+    if type(index_component) is not int or index_component not in _GLB_SPARSE_INDEX_STRUCTS:
+        raise AssetValidationError("GLB sparse accessor index componentType is invalid")
+    index_struct = _GLB_SPARSE_INDEX_STRUCTS[index_component]
+    index_bytes = index_struct.size
+    offset = _validate_accessor_span(
+        indices,
+        buffer_views,
+        sparse_count,
+        index_bytes,
+        index_bytes,
+        index_bytes,
+        sparse=True,
+    )
+    _validate_accessor_span(
+        values, buffer_views, sparse_count, alignment, element_size, packed_stride, sparse=True
+    )
+    previous = -1
+    for (index,) in index_struct.iter_unpack(binary[offset : offset + sparse_count * index_bytes]):
+        if index >= count:
+            raise AssetValidationError("GLB sparse accessor index is out of range")
+        if index <= previous:
+            raise AssetValidationError("GLB sparse accessor indices must be strictly increasing")
+        previous = index
 
 
 def validate_glb_bytes(data: bytes) -> None:
@@ -355,19 +496,21 @@ def validate_glb_bytes(data: bytes) -> None:
         isinstance(ext, str) for ext in extensions_required
     ):
         raise AssetValidationError("GLB extensionsRequired must be a list of strings")
-    unsupported = sorted(_GLB_UNSUPPORTED_REQUIRED_EXTENSIONS.intersection(extensions_required))
+    unsupported = sorted(set(extensions_required) - _GLB_SUPPORTED_REQUIRED_EXTENSIONS)
     if unsupported:
         raise AssetValidationError(
-            f"GLB requires unsupported compression extension(s): {', '.join(unsupported)}"
+            f"GLB requires unsupported extension(s): {', '.join(unsupported)}"
         )
 
     buffers = document.get("buffers", [])
     if not isinstance(buffers, list):
         raise AssetValidationError("GLB buffers must be a list")
+    if len(buffers) > 1:
+        raise AssetValidationError("Self-contained GLB files support at most one BIN buffer")
     for buffer in buffers:
         if not isinstance(buffer, dict) or "uri" in buffer:
             raise AssetValidationError("GLB buffers must use the BIN chunk without a URI")
-        length = buffer.get("byteLength", 0)
+        length = buffer.get("byteLength")
         if type(length) is not int or not 0 <= length <= bin_length:
             raise AssetValidationError("GLB buffer byteLength exceeds the BIN chunk or is invalid")
 
@@ -377,20 +520,29 @@ def validate_glb_bytes(data: bytes) -> None:
     for view in buffer_views:
         if not isinstance(view, dict):
             raise AssetValidationError("GLB bufferView entries must be objects")
+        buffer_index = view.get("buffer")
+        if type(buffer_index) is not int or not 0 <= buffer_index < len(buffers):
+            raise AssetValidationError("GLB bufferView buffer index is invalid")
         view_offset = view.get("byteOffset", 0)
         view_length = view.get("byteLength")
+        # The declared buffer length is already bounded by the BIN chunk.
         if (
             type(view_offset) is not int
             or type(view_length) is not int
             or view_offset < 0
             or view_length < 0
-            or view_offset + view_length > bin_length
+            or view_offset + view_length > buffers[buffer_index]["byteLength"]
         ):
-            raise AssetValidationError("GLB bufferView exceeds the BIN chunk or is invalid")
+            raise AssetValidationError("GLB bufferView exceeds its declared buffer or is invalid")
+        if "byteStride" in view:
+            stride = view["byteStride"]
+            if type(stride) is not int or not 4 <= stride <= 252 or stride % 4:
+                raise AssetValidationError("GLB bufferView byteStride is invalid")
 
     accessors = document.get("accessors", [])
     if not isinstance(accessors, list):
         raise AssetValidationError("GLB accessors must be a list")
+    binary = memoryview(data)[bin_offset : bin_offset + bin_length]
     total_accessor_elements = 0
     for accessor in accessors:
         if not isinstance(accessor, dict):
@@ -401,6 +553,7 @@ def validate_glb_bytes(data: bytes) -> None:
         total_accessor_elements += count
         if total_accessor_elements > _MAX_GLB_TOTAL_ACCESSOR_ELEMENTS:
             raise AssetValidationError("GLB geometry exceeds total vertex/accessor safety limits")
+        _validate_glb_accessor(accessor, buffer_views, count, binary)
 
     images = document.get("images", [])
     if not isinstance(images, list):

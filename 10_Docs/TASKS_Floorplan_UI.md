@@ -1,5 +1,12 @@
 ## Floorplan UI – Implementation Status & Task List
 
+### Release 0.4.1 status (2026-11-25)
+
+- [x] Preserve v1–v3 plans with legacy extra fields during schema v4 migration.
+- [x] Correct 3D keyboard placement and native drag-and-drop, and localize viewport errors.
+- [x] Validate embedded SVG rasters, GLB buffer and accessor bounds, and required GLB extensions.
+- [x] Correct SVG dimensions and attribute aggregate units, and reject degenerate camera presets.
+
 ### Release 0.4.0 status (2026-11-25)
 
 - [x] Support mixed PNG, JPEG, sanitized SVG, and self-contained 3D GLB plans.
@@ -289,7 +296,7 @@
 - [x] **Release & versioning hygiene (HACS compatibility)**
   - Public GitHub release history starts with `v0.1.0`; documentation maintenance
     is released as `v0.1.1`.
-  - `manifest.json`, `const.py`, and `frontend/package.json` are synchronized at `0.4.0`.
+  - `manifest.json`, `const.py`, and `frontend/package.json` are synchronized at `0.4.1`.
   - HACS and Hassfest validation are required for every release commit.
   - Public release history is maintained in the repository-root `CHANGELOG.md` and
     user-facing release notes are published with each matching GitHub release.

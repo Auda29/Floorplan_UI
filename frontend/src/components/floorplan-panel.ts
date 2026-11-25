@@ -469,6 +469,11 @@ export class FloorplanPanel extends LitElement {
           loadModelBuffer: () => fetchFloorplanModel(this.hass, background),
           cameraMode,
           cameraPreset: this._getCurrentView()?.camera_preset_id,
+          messages: {
+            webglUnavailable: this._t("panel.webglUnavailable"),
+            modelLoadError: this._t("panel.modelLoadError"),
+            webglContextLost: this._t("panel.webglContextLost"),
+          },
           onPlaceMarker: (id, { x, y, z }) => this._addMarkerAt(id, { x, y, z }),
           onSelectMarker: (id) => this._selectCanvasObject("marker", id),
           onMoveMarker: (id, pos) => this._updateMarker(id, { pos }),
@@ -586,9 +591,10 @@ export class FloorplanPanel extends LitElement {
     this._shape = shape;
     this._entityToAdd = entity;
     void this.updateComplete.then(() =>
-      this.renderRoot
-        .querySelector<HTMLButtonElement>(".placement-surface")
-        ?.focus({ preventScroll: true })
+      (
+        this.renderRoot.querySelector<HTMLButtonElement>(".placement-surface") ??
+        this._canvasContainer()
+      )?.focus({ preventScroll: true })
     );
   }
 
@@ -754,6 +760,12 @@ export class FloorplanPanel extends LitElement {
       is3DPlan(this._getCurrentPlan()) &&
       (this._entityToAdd || this._shape === "anchor3d")
     ) {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("button, input, select, textarea, a, [role='button']")
+      ) {
+        return;
+      }
       const container = this._canvasContainer();
       if (!container) return;
       event.preventDefault();

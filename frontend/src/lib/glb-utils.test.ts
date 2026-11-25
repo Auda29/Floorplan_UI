@@ -79,6 +79,60 @@ describe("GLB uploads", () => {
     expect(validateGlbHeader(glb)).toMatchObject({ valid: false });
   });
 
+  it.each(["data:application/octet-stream;base64,YQ==", null, ""])(
+    "rejects any buffer URI (%s)",
+    (uri) => {
+      const glb = makeGlb(JSON.stringify({ asset: { version: "2.0" }, buffers: [{ uri }] }));
+      expect(validateGlbHeader(glb)).toMatchObject({
+        valid: false,
+        reason: expect.stringContaining("BIN chunk"),
+      });
+    }
+  );
+
+  it("allows supported required extensions and ignores unknown optional extensions", () => {
+    const supported = [
+      "EXT_materials_bump",
+      "EXT_mesh_gpu_instancing",
+      "EXT_texture_webp",
+      "KHR_materials_diffuse_roughness",
+      "KHR_materials_unlit",
+    ];
+    const glb = makeGlb(
+      JSON.stringify({
+        asset: { version: "2.0" },
+        extensionsRequired: supported,
+        extensionsUsed: [...supported, "EXT_unknown"],
+      })
+    );
+    expect(validateGlbHeader(glb)).toEqual({ valid: true });
+  });
+
+  it.each([
+    "KHR_draco_mesh_compression",
+    "EXT_meshopt_compression",
+    "KHR_meshopt_compression",
+    "KHR_materials_pbrSpecularGlossiness",
+    "KHR_texture_basisu",
+    "EXT_unknown",
+  ])("rejects the unsupported required extension %s", (extension) => {
+    const glb = makeGlb(
+      JSON.stringify({ asset: { version: "2.0" }, extensionsRequired: [extension] })
+    );
+    expect(validateGlbHeader(glb)).toMatchObject({
+      valid: false,
+      reason: expect.stringContaining(extension),
+    });
+  });
+
+  it("rejects malformed required extension lists", () => {
+    const glb = makeGlb(JSON.stringify({ asset: { version: "2.0" }, extensionsRequired: [null] }));
+    expect(validateGlbHeader(glb)).toMatchObject({
+      valid: false,
+      reason: expect.stringContaining("list of strings"),
+    });
+  });
+
   it("rejects uploads outside the supported size range", () => {
     expect(validateGlbHeader(new ArrayBuffer(27))).toMatchObject({ valid: false });
     expect(validateGlbHeader(new ArrayBuffer(MAX_MODEL_FILE_BYTES + 1))).toMatchObject({

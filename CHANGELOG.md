@@ -6,6 +6,30 @@ release versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-25
+
+### Fixed
+
+- Preserve floorplans, asset references, and views when migrating older configurations
+  that contain extra fields.
+- Focus the 3D canvas when arming placement. Enter on the canvas places the marker
+  at the center, and Enter on Cancel dismisses the prompt.
+- Place only the dragged entity when dropping it onto a 3D canvas with another
+  entity armed for placement.
+- Use explicit SVG width and height when available, with `viewBox` as the fallback.
+- Omit the entity state's unit when aggregating a secondary attribute.
+- Reject camera presets whose position is identical to their target.
+- Localize WebGL availability, model loading, and context loss errors in English and German.
+
+### Security
+
+- Fully decode embedded PNG and JPEG images in SVGs and enforce both per-image
+  and cumulative pixel limits.
+- Validate GLB buffer views and dense and sparse accessor bounds, including
+  interleaved strides and matrix padding.
+- Allowlist required GLB extensions in both the upload client and server. The
+  upload client also rejects buffer URIs before sending the file.
+
 ## [0.4.0] - 2026-11-25
 
 ### Added
@@ -267,7 +291,8 @@ First public, HACS-installable alpha release.
 - Mark this release as an initial-development alpha; back up the Home Assistant
   configuration before testing with production data.
 
-[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Auda29/Floorplan_UI/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Auda29/Floorplan_UI/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Auda29/Floorplan_UI/compare/v0.2.0-beta.4...v0.2.0

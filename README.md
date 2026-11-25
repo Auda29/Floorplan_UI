@@ -6,7 +6,7 @@ Floorplan UI is a local-first Home Assistant custom integration for mapping Home
 Assistant areas and entities onto 2D floorplans (PNG, JPEG, or SVG) and 3D models (GLB). It adds a
 sidebar panel with separate view and admin-only edit modes.
 
-> Current HACS release: `0.4.0`.
+> Current HACS release: `0.4.1`.
 
 ## Current capabilities
 
@@ -51,6 +51,12 @@ perspective camera, and save camera presets for individual plans and views.
 The viewport renders on demand and supports optional shadows. Live `light.*`
 states control room lighting and floor glow.
 
+GLB uploads support Three.js r187's native material extensions, punctual lights,
+mesh quantization, GPU instancing, texture transforms, and WebP textures.
+Export models that require Draco, Meshopt, or KTX2/Basis Universal without those
+compression options. Use metallic-roughness materials for models that require
+`KHR_materials_pbrSpecularGlossiness`.
+
 Place or drag markers directly on model surfaces. Bind a room to a mesh or
 position a 3D anchor for its overlay. Select a Material Design Icon (`mdi:*`)
 in the Marker Inspector to use its SVG path on the 2D canvas or 3D overlay.
@@ -75,7 +81,7 @@ backgrounds, or missing 3D meshes.
 
 1. Add `https://github.com/Auda29/Floorplan_UI` as a custom HACS repository of
    type **Integration**.
-2. Install **Floorplan UI 0.4.0** from HACS and restart Home Assistant.
+2. Install **Floorplan UI 0.4.1** from HACS and restart Home Assistant.
 3. Open **Settings → Devices & services → Add integration** and select
    **Floorplan UI**.
 4. Open **Floorplan** from the sidebar. An administrator can upload the first
@@ -89,7 +95,7 @@ All runtime files, including the compiled panel bundle, live inside
 Minimum supported Home Assistant version: **2025.7.3**. CI additionally checks a
 current Home Assistant/Python combination.
 
-### Updating to 0.4.0
+### Updating to 0.4.1
 
 Update through HACS, restart Home Assistant, and reload the Floorplan panel.
 Configurations from schema versions 1–3 migrate automatically to version 4,
@@ -158,10 +164,10 @@ The complete user-facing release history is maintained in
 [`CHANGELOG.md`](CHANGELOG.md). HACS obtains available versions and update notes
 from the corresponding [GitHub releases](https://github.com/Auda29/Floorplan_UI/releases).
 The current public release is
-[`v0.4.0`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.4.0).
+[`v0.4.1`](https://github.com/Auda29/Floorplan_UI/releases/tag/v0.4.1).
 
 Versions below `1.0.0` represent initial development and may contain breaking
-changes. HACS offers `0.4.0` through its normal release channel.
+changes. HACS offers `0.4.1` through its normal release channel.
 
 ## Release checklist
 

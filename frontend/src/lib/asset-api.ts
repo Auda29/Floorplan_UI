@@ -166,8 +166,8 @@ function normalizeSvgDimensions(width: number, height: number): { width: number;
   if (largest <= MAX_SVG_BACKGROUND_DIMENSION) return { width, height };
   const scale = CLAMPED_SVG_MAX_DIMENSION / largest;
   return {
-    width: Math.max(1, Number((width * scale).toFixed(2))),
-    height: Math.max(1, Number((height * scale).toFixed(2))),
+    width: Math.max(1e-4, Number((width * scale).toFixed(4))),
+    height: Math.max(1e-4, Number((height * scale).toFixed(4))),
   };
 }
 
@@ -183,6 +183,11 @@ export async function readImageDimensions(file: Blob): Promise<{ width: number; 
 
   const root = new DOMParser().parseFromString(await file.text(), "image/svg+xml").documentElement;
   if (root.localName === "svg") {
+    const width = svgPixelLength(root.getAttribute("width"));
+    const height = svgPixelLength(root.getAttribute("height"));
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      return normalizeSvgDimensions(width, height);
+    }
     const viewBox = root
       .getAttribute("viewBox")
       ?.trim()
@@ -195,11 +200,6 @@ export async function readImageDimensions(file: Blob): Promise<{ width: number; 
       viewBox[3] > 0
     ) {
       return normalizeSvgDimensions(viewBox[2], viewBox[3]);
-    }
-    const width = svgPixelLength(root.getAttribute("width"));
-    const height = svgPixelLength(root.getAttribute("height"));
-    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-      return normalizeSvgDimensions(width, height);
     }
   }
   return { width: 1000, height: 800 };

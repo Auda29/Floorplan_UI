@@ -176,8 +176,11 @@ describe("asset API", () => {
   });
 
   it.each([
+    ['width="800" height="400" viewBox="0 0 100 100"', { width: 800, height: 400 }],
+    ['width="0" height="400" viewBox="0 0 100 100"', { width: 100, height: 100 }],
     ['viewBox="-10 20,600 400" width="100%"', { width: 600, height: 400 }],
     ['width="456.5px" height="3e2"', { width: 456.5, height: 300 }],
+    ['width="100000" height="10"', { width: 4000, height: 0.4 }],
     ['width="100%" height="300px"', { width: 1000, height: 800 }],
     ["", { width: 1000, height: 800 }],
   ])("reads SVG dimensions from root attributes (%s)", async (attrs, dimensions) => {

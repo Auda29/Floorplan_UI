@@ -19,12 +19,26 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 _CAMERA_MODES = ("ortho", "perspective")
+_CONFIG_KEYS = {"version", "revision", "default_view", "plans", "views"}
+_PLAN_KEYS = {"plan_id", "name", "background", "areas", "markers", "view"}
+_IMAGE_BACKGROUND_KEYS = {"type", "asset_id", "content_type", "url", "width", "height"}
+_MODEL_BACKGROUND_KEYS = _IMAGE_BACKGROUND_KEYS | {"unit_scale"}
+_V3_PLAN_VIEW_KEYS = {"minZoom", "maxZoom"}
+_PLAN_VIEW_KEYS = _V3_PLAN_VIEW_KEYS | {"shadows", "lighting", "camera_mode", "camera_presets"}
+_V3_VIEW_KEYS = {"id", "name", "filters", "area_overlay", "marker_overlay"}
+_VIEW_KEYS = _V3_VIEW_KEYS | {"style", "camera_preset_id"}
+_VIEW_FILTER_KEYS = {"domains", "tags", "area_ids"}
 _AREA_STYLE_DEFAULTS = {
     "fillOpacity": 0.4,
     "strokeWidth": 2,
     "fill": "#2196f3",
     "stroke": "#1976d2",
 }
+
+
+def _strip_extra_keys(data: dict[str, Any], allowed: set[str]) -> None:
+    for key in data.keys() - allowed:
+        del data[key]
 
 
 def default_config() -> dict[str, Any]:
@@ -92,7 +106,7 @@ class ConfigModel:
         if not isinstance(config, dict):
             return False, "Config must be a dictionary"
 
-        if config.keys() - {"version", "revision", "plans", "views", "default_view"}:
+        if config.keys() - _CONFIG_KEYS:
             return False, "Config contains unknown fields"
         version = config.get("version")
         if isinstance(version, bool) or not isinstance(version, int) or version < 1:
@@ -135,14 +149,7 @@ class ConfigModel:
             return False, "Config plan IDs must be unique"
 
         for plan_index, plan in enumerate(plans):
-            if not isinstance(plan, dict) or plan.keys() - {
-                "plan_id",
-                "name",
-                "background",
-                "areas",
-                "markers",
-                "view",
-            }:
+            if not isinstance(plan, dict) or plan.keys() - _PLAN_KEYS:
                 return False, f"Plan {plan_index} must be an object"
             if not isinstance(plan.get("plan_id"), str) or not plan["plan_id"]:
                 return False, f"Plan {plan_index} needs a plan_id"
@@ -156,9 +163,7 @@ class ConfigModel:
             if background_type not in ("image", "model"):
                 return False, f"Plan {plan_index}.background.type is invalid"
             is_model = background_type == "model"
-            background_keys = {"type", "asset_id", "content_type", "url", "width", "height"}
-            if is_model:
-                background_keys.add("unit_scale")
+            background_keys = _MODEL_BACKGROUND_KEYS if is_model else _IMAGE_BACKGROUND_KEYS
             if background.keys() - background_keys:
                 return False, f"Plan {plan_index}.background contains unknown fields"
 
@@ -350,14 +355,7 @@ class ConfigModel:
                     )
 
             view_config = plan.get("view")
-            if not isinstance(view_config, dict) or view_config.keys() - {
-                "minZoom",
-                "maxZoom",
-                "shadows",
-                "lighting",
-                "camera_mode",
-                "camera_presets",
-            }:
+            if not isinstance(view_config, dict) or view_config.keys() - _PLAN_VIEW_KEYS:
                 return False, f"Plan {plan_index}.view must be an object"
             min_zoom = view_config.get("minZoom")
             max_zoom = view_config.get("maxZoom")
@@ -383,15 +381,7 @@ class ConfigModel:
                     return False, f"Plan {plan_index}.view.camera_presets is invalid"
 
         for view_index, view in enumerate(views):
-            if not isinstance(view, dict) or view.keys() - {
-                "id",
-                "name",
-                "filters",
-                "style",
-                "camera_preset_id",
-                "area_overlay",
-                "marker_overlay",
-            }:
+            if not isinstance(view, dict) or view.keys() - _VIEW_KEYS:
                 return False, f"View {view_index} must be an object"
             if (
                 not isinstance(view.get("id"), str)
@@ -401,7 +391,7 @@ class ConfigModel:
             ):
                 return False, f"View {view_index} needs an id and name"
             filters = view.get("filters")
-            if not isinstance(filters, dict) or filters.keys() - {"domains", "tags", "area_ids"}:
+            if not isinstance(filters, dict) or filters.keys() - _VIEW_FILTER_KEYS:
                 return False, f"View {view_index}.filters must be an object"
             for filter_name in ("domains", "tags", "area_ids"):
                 values = filters.get(filter_name)
@@ -474,6 +464,7 @@ class ConfigModel:
             and preset.get("mode") in _CAMERA_MODES
             and ConfigModel._valid_position(preset.get("position"))
             and ConfigModel._valid_position(preset.get("target"))
+            and preset["position"] != preset["target"]
             and ("zoom" not in preset or (ConfigModel._is_finite_number(zoom) and zoom > 0))
         )
 
@@ -620,7 +611,8 @@ class ConfigModel:
 
     @staticmethod
     def _migrate_v3_defaults(config: dict[str, Any], plans: list[Any]) -> None:
-        """Materialize defaults previously applied to legacy configurations."""
+        """Materialize legacy defaults and discard fields outside the v4 contract."""
+        _strip_extra_keys(config, _CONFIG_KEYS)
         for key in ("plans", "views"):
             if config.get(key) is None:
                 config[key] = []
@@ -630,13 +622,18 @@ class ConfigModel:
         if isinstance(views, list):
             for view in views:
                 if isinstance(view, dict):
-                    view.setdefault("filters", {})
+                    _strip_extra_keys(view, _V3_VIEW_KEYS)
+                    filters = view.setdefault("filters", {})
+                    if isinstance(filters, dict):
+                        _strip_extra_keys(filters, _VIEW_FILTER_KEYS)
         for plan in plans:
             if not isinstance(plan, dict):
                 continue
+            _strip_extra_keys(plan, _PLAN_KEYS)
             background = plan.get("background")
             if isinstance(background, dict):
                 background.setdefault("type", "image")
+                _strip_extra_keys(background, _IMAGE_BACKGROUND_KEYS)
                 for key in ("asset_id", "url"):
                     if background.get(key) is None:
                         background.pop(key, None)
@@ -645,6 +642,7 @@ class ConfigModel:
             plan.setdefault("markers", [])
             view = plan.setdefault("view", {})
             if isinstance(view, dict):
+                _strip_extra_keys(view, _V3_PLAN_VIEW_KEYS)
                 view.setdefault("minZoom", 0.1)
                 view.setdefault("maxZoom", 5)
             areas = plan.setdefault("areas", [])

@@ -87,7 +87,7 @@ export function resolveAreaAggregate(
       sum += value;
       min = Math.min(min, value);
       max = Math.max(max, value);
-      units.add(state.attributes.unit_of_measurement);
+      if (!spec.attr) units.add(state.attributes.unit_of_measurement);
     }
     count++;
   }

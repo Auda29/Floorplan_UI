@@ -118,6 +118,7 @@ export interface ThreeViewportOptions extends ThreeViewportState {
   loadModelBuffer: () => Promise<ArrayBuffer>;
   cameraMode?: ThreeCameraMode;
   cameraPreset?: string | ThreeCameraPreset;
+  messages?: { webglUnavailable?: string; modelLoadError?: string; webglContextLost?: string };
   resolveIconPath?: (marker: ThreeViewportMarker) => string | null;
   resolveBadgeIconPath?: (badge: BadgeSpec) => string | null;
   onPlaceMarker?: (entityId: string, position: ModelHit) => void;
@@ -575,7 +576,7 @@ class ThreeViewport implements ThreeViewportController {
         powerPreference: "low-power",
       });
     } catch (error) {
-      this.showError("3D view requires WebGL.", error);
+      this.showError(options.messages?.webglUnavailable ?? "3D view requires WebGL.", error);
       this.ready = Promise.resolve(false);
       return;
     }
@@ -649,7 +650,10 @@ class ThreeViewport implements ThreeViewportController {
       this.refresh();
       return true;
     } catch (error) {
-      this.showError("The 3D model could not be loaded.", error);
+      this.showError(
+        this.options.messages?.modelLoadError ?? "The 3D model could not be loaded.",
+        error
+      );
       return false;
     }
   }
@@ -709,7 +713,7 @@ class ThreeViewport implements ThreeViewportController {
         event.preventDefault();
         this.contextLost = true;
         this.transition = undefined;
-        this.showError("The WebGL context was lost.");
+        this.showError(this.options.messages?.webglContextLost ?? "The WebGL context was lost.");
       },
       { signal }
     );
@@ -1120,13 +1124,23 @@ class ThreeViewport implements ThreeViewportController {
 
   private readonly onNativeDrop = (event: DragEvent): void => {
     if (!this.state.editMode) return;
+    if (
+      !this.options.onDrop &&
+      (event.dataTransfer?.getData("application/x-floorplan-entity") ||
+        event.dataTransfer?.getData("text/plain"))
+    ) {
+      // The editor's parent drop handler places the entity carried by the drag.
+      return;
+    }
     const hit = this.raycastClientPoint(event.clientX, event.clientY);
     if (!hit) return;
     if (this.options.onDrop) {
       event.preventDefault();
+      event.stopPropagation();
       this.options.onDrop(event, hit);
     } else if (this.state.armedEntityId && this.options.onPlaceMarker) {
       event.preventDefault();
+      event.stopPropagation();
       this.options.onPlaceMarker(this.state.armedEntityId, hit);
     }
   };

@@ -14,6 +14,7 @@ import {
 import type { Scene } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { HassEntity } from "../types/home-assistant";
+import { createLocalizer } from "./i18n";
 import {
   computeCameraPreset,
   createThreeViewport,
@@ -255,16 +256,22 @@ describe("Three.js viewport lifecycle", () => {
     vi.unstubAllGlobals();
   });
 
-  it("surfaces the real renderer's WebGL error and tears down the fallback", async () => {
+  it("shows the localized fallback for the real renderer's WebGL error", async () => {
     webgl.mockRenderer = false;
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const loadModelBuffer = vi.fn();
     const onError = vi.fn();
-    const viewport = mount({ loadModelBuffer, onError });
+    const viewport = mount({
+      loadModelBuffer,
+      onError,
+      messages: { webglUnavailable: createLocalizer("de")("panel.webglUnavailable") },
+    });
 
     expect(await viewport.ready).toBe(false);
-    expect(container.querySelector("[role=alert]")?.textContent).toContain("WebGL");
+    expect(container.querySelector("[role=alert]")?.textContent).toBe(
+      "WebGL ist in diesem Browser nicht verfügbar."
+    );
     expect(onError).toHaveBeenCalledWith(expect.any(Error));
     expect(loadModelBuffer).not.toHaveBeenCalled();
     expect(viewport.raycastClientPoint(0, 0)).toBeNull();
@@ -281,6 +288,25 @@ describe("Three.js viewport lifecycle", () => {
     expect(container.querySelector("[role=alert]")?.textContent).toContain("could not be loaded");
     expect(onError).toHaveBeenCalledWith(
       expect.objectContaining({ message: expect.stringContaining("too short") })
+    );
+  });
+
+  it("renders the configured model load and context loss messages", async () => {
+    const t = createLocalizer("de");
+    const messages = {
+      modelLoadError: t("panel.modelLoadError"),
+      webglContextLost: t("panel.webglContextLost"),
+    };
+    const broken = mount({ loadModelBuffer: async () => new ArrayBuffer(0), messages });
+    expect(await broken.ready).toBe(false);
+    expect(container.querySelector("[role=alert]")?.textContent).toBe(messages.modelLoadError);
+    broken.destroy();
+
+    const viewport = mount({ messages });
+    expect(await viewport.ready).toBe(true);
+    container.querySelector("canvas")!.dispatchEvent(new Event("webglcontextlost"));
+    expect(container.querySelector("[role=alert]")?.textContent).toBe(
+      "Der WebGL-Kontext wurde verloren."
     );
   });
 
@@ -405,7 +431,17 @@ describe("Three.js viewport lifecycle", () => {
       "sensor.test",
       expect.objectContaining({ y: expect.closeTo(-0.5) })
     );
-    canvas.dispatchEvent(new MouseEvent("drop", { bubbles: true, clientX: 200, clientY: 150 }));
+    const parentDrop = vi.fn();
+    container.addEventListener("drop", parentDrop);
+    const drop = new MouseEvent("drop", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 200,
+      clientY: 150,
+    });
+    canvas.dispatchEvent(drop);
+    expect(drop.defaultPrevented).toBe(true);
+    expect(parentDrop).not.toHaveBeenCalled();
     expect(onDrop).toHaveBeenCalledWith(
       expect.any(Event),
       expect.objectContaining({ meshName: mesh.name })
@@ -416,6 +452,41 @@ describe("Three.js viewport lifecycle", () => {
     viewport.destroy();
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+  it.each(["application/x-floorplan-entity", "text/plain"])(
+    "places only the dragged entity when a %s drop lands on the armed viewport",
+    async (payloadType) => {
+      addRoomToLoadedScene();
+      const onPlaceMarker = vi.fn();
+      const viewport = mount({ editMode: true, armedEntityId: "light.armed", onPlaceMarker });
+      expect(await viewport.ready).toBe(true);
+      viewport.applyCameraPreset("top");
+      const canvas = container.querySelector("canvas")!;
+      const drop = () =>
+        new MouseEvent("drop", { bubbles: true, cancelable: true, clientX: 200, clientY: 150 });
+      const parentDrop = vi.fn((event: DragEvent) => {
+        const id = event.dataTransfer?.getData(payloadType);
+        if (id) viewport.dropAt(event.clientX, event.clientY, id);
+      });
+      container.addEventListener("drop", parentDrop);
+      const entityDrop = drop();
+      Object.defineProperty(entityDrop, "dataTransfer", {
+        value: { getData: (type: string) => (type === payloadType ? "light.dragged" : "") },
+      });
+
+      canvas.dispatchEvent(entityDrop);
+      expect(parentDrop).toHaveBeenCalledOnce();
+      expect(onPlaceMarker).toHaveBeenCalledExactlyOnceWith("light.dragged", expect.any(Object));
+
+      onPlaceMarker.mockClear();
+      parentDrop.mockClear();
+      const payloadlessDrop = drop();
+      canvas.dispatchEvent(payloadlessDrop);
+      expect(payloadlessDrop.defaultPrevented).toBe(true);
+      expect(parentDrop).not.toHaveBeenCalled();
+      expect(onPlaceMarker).toHaveBeenCalledExactlyOnceWith("light.armed", expect.any(Object));
+    }
+  );
 
   it("updates projected chips, aggregate values, mesh styles, and marker interactions", async () => {
     const mesh = addRoomToLoadedScene();

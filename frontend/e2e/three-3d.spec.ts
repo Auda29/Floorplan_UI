@@ -212,7 +212,7 @@ test("production entry keeps SVG plans independent of the 3D chunk", async ({ pa
   expect(requested).toEqual(["floorplan-ui.js"]);
 });
 
-test("production bundle loads GLB on demand and edits projected objects", async ({ page }) => {
+async function openModelPlan(page: Page) {
   const { panel, requested } = await mount(page);
   expect(requested).toEqual(["floorplan-ui.js"]);
   await panel.getByRole("button", { name: "Edit", exact: true }).click();
@@ -238,6 +238,74 @@ test("production bundle loads GLB on demand and edits projected objects", async 
     "floorplan-ui.js",
     expect.stringMatching(/^chunks\/three-viewport-.*\.js$/),
   ]);
+  return { panel, canvas };
+}
+
+test("3D keyboard placement focuses the canvas and respects Cancel", async ({ page }) => {
+  const { panel } = await openModelPlan(page);
+  const container = panel.locator(".canvas-container");
+  await panel.locator(".map-dock").getByRole("button", { name: "Top", exact: true }).click();
+  await panel.getByRole("button", { name: "Library", exact: true }).click();
+  const lamp = panel.locator(".entity-card").filter({ hasText: "light.lamp" });
+  const prompt = panel.locator(".placement-prompt");
+  const markers = () => page.evaluate(() => window.productionFloorplan.plans.at(-1)?.markers);
+
+  await lamp.click();
+  await expect(container).toBeFocused();
+  const cancel = prompt.getByRole("button", { name: "Cancel" });
+  await cancel.focus();
+  await page.keyboard.press("Enter");
+  await expect(prompt).toHaveCount(0);
+  await expect(panel.locator('[data-viewport-chip="marker"]')).toHaveCount(0);
+  expect(await markers()).toEqual([]);
+
+  await lamp.click();
+  await expect(container).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(prompt).toHaveCount(0);
+  await expect.poll(markers).toEqual([
+    expect.objectContaining({
+      entity_id: "light.lamp",
+      pos: { x: expect.closeTo(0), y: expect.closeTo(1), z: expect.closeTo(0) },
+    }),
+  ]);
+});
+
+test("a native drop on the 3D canvas places only the dragged entity", async ({ page }) => {
+  const { panel, canvas } = await openModelPlan(page);
+  await panel.getByRole("button", { name: "Library", exact: true }).click();
+  await panel.locator(".entity-card").filter({ hasText: "light.lamp" }).click();
+  await expect(panel.locator(".placement-prompt")).toBeVisible();
+
+  const target = (await canvas.boundingBox())!;
+  const payload = await page.evaluateHandle(() => new DataTransfer());
+  await panel
+    .locator(".entity-card")
+    .filter({ hasText: "light.second" })
+    .dispatchEvent("dragstart", {
+      dataTransfer: payload,
+    });
+  const drop = {
+    dataTransfer: payload,
+    clientX: target.x + target.width / 2,
+    clientY: target.y + target.height / 2,
+  };
+  await canvas.dispatchEvent("dragover", drop);
+  await canvas.dispatchEvent("drop", drop);
+  await payload.dispose();
+  await expect(panel.locator('[data-viewport-chip="marker"]')).toHaveCount(1);
+  await expect
+    .poll(() => page.evaluate(() => window.productionFloorplan.plans.at(-1)?.markers))
+    .toEqual([
+      expect.objectContaining({
+        entity_id: "light.second",
+        pos: { x: expect.any(Number), y: expect.any(Number), z: expect.any(Number) },
+      }),
+    ]);
+});
+
+test("production bundle loads GLB on demand and edits projected objects", async ({ page }) => {
+  const { panel, canvas } = await openModelPlan(page);
 
   const dock = panel.locator(".map-dock");
   await dock.getByRole("button", { name: "Top", exact: true }).click();

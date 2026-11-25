@@ -25,6 +25,7 @@ const members = [
     unit_of_measurement: "°C",
     device_class: "temperature",
     offset: 0,
+    battery_level: 80,
   }),
   entity("sensor.two", "18", {
     unit_of_measurement: "°C",
@@ -100,5 +101,8 @@ describe("area aggregates", () => {
         markers
       )
     ).toBe("18");
+  });
+  it("omits the primary state's unit when aggregating an attribute", () => {
+    expect(result("avg", { attr: "battery_level" })).toBe("80");
   });
 });

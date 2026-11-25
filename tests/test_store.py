@@ -87,6 +87,26 @@ def valid_config() -> dict:
     }
 
 
+def v3_config_with_legacy_keys() -> tuple[dict, dict]:
+    """Return a legacy config and its expected data with the extra keys removed."""
+    clean = valid_config()
+    clean["plans"].append(copy.deepcopy(clean["plans"][0]))
+    clean["plans"][1].update(plan_id="upstairs", name="Upstairs")
+    clean["views"][0]["filters"]["domains"] = ["light"]
+    legacy = copy.deepcopy(clean)
+    legacy["notes"] = "My floorplans"
+    legacy["views"][0].update(
+        description="Downstairs", style={"legacy": True}, camera_preset_id=123
+    )
+    legacy["views"][0]["filters"]["entities"] = ["light.kitchen"]
+    legacy["plans"][0]["description"] = "Ground floor"
+    legacy["plans"][0]["view"].update(
+        zoom=1, shadows="legacy", lighting=True, camera_mode=2, camera_presets=[]
+    )
+    legacy["plans"][1]["background"].update(legacy_path="upstairs.png", unit_scale=2)
+    return legacy, clean
+
+
 def valid_model_config() -> dict:
     """Return a v4 model plan using the new camera, geometry and overlay fields."""
     config = valid_config()
@@ -240,6 +260,21 @@ class FloorplanStoreTests(unittest.TestCase):
         self.assertEqual(1200, original["plans"][0]["background"]["width"])
         self.assertEqual(3, original["version"])
 
+    def test_v3_migration_preserves_all_plans_with_legacy_extra_fields(self) -> None:
+        legacy, clean = v3_config_with_legacy_keys()
+
+        normalized = FloorplanStore.validate_and_normalize(legacy)
+
+        self.assertEqual(4, normalized["version"])
+        self.assertEqual(clean["plans"], normalized["plans"])
+        self.assertEqual(clean["views"], normalized["views"])
+        self.assertNotIn("notes", normalized)
+        self.assertEqual("Downstairs", legacy["views"][0]["description"])
+
+        legacy["version"] = 4
+        with self.assertRaisesRegex(ValueError, "unknown fields"):
+            FloorplanStore.validate_and_normalize(legacy)
+
     def test_model_fields_round_trip_without_persisting_the_signed_url(self) -> None:
         original = valid_model_config()
         plan = original["plans"][0]
@@ -276,6 +311,14 @@ class FloorplanStoreTests(unittest.TestCase):
                 obj[path[-1]] = float("inf")
                 valid, _error = FloorplanStore._validate_config_structure(config)
                 self.assertFalse(valid)
+
+    def test_camera_preset_position_must_differ_from_target(self) -> None:
+        config = valid_model_config()
+        preset = config["plans"][0]["view"]["camera_presets"][0]
+        preset["position"] = preset["target"].copy()
+
+        with self.assertRaisesRegex(ValueError, "camera_presets"):
+            FloorplanStore.validate_and_normalize(config)
 
     def test_future_schema_is_rejected(self) -> None:
         config = valid_config()
@@ -451,6 +494,22 @@ class FloorplanStoreTests(unittest.TestCase):
 
 class FloorplanLoadTests(unittest.IsolatedAsyncioTestCase):
     """Recover broken legacy backgrounds without discarding plan data."""
+
+    async def test_v3_load_preserves_and_persists_all_plans_with_legacy_extra_fields(self) -> None:
+        legacy, clean = v3_config_with_legacy_keys()
+        disk = types.SimpleNamespace(
+            async_load=AsyncMock(return_value=legacy), async_save=AsyncMock()
+        )
+        assets = types.SimpleNamespace(async_exists=AsyncMock(return_value=True))
+        with patch.object(STORE_MODULE, "Store", return_value=disk):
+            store = FloorplanStore(object(), assets)
+
+        loaded = await store.async_load()
+
+        self.assertEqual(4, loaded["version"])
+        self.assertEqual(clean["plans"], loaded["plans"])
+        self.assertEqual(clean["views"], loaded["views"])
+        disk.async_save.assert_awaited_once_with(loaded)
 
     async def test_concurrent_update_waits_for_migration_to_persist(self) -> None:
         original = valid_config()

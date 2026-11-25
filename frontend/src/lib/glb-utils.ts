@@ -5,6 +5,27 @@ const GLB_MAGIC = 0x46546c67;
 const JSON_CHUNK = 0x4e4f534a;
 const HEADER_BYTES = 12;
 const CHUNK_HEADER_BYTES = 8;
+// Keep in sync with _GLB_SUPPORTED_REQUIRED_EXTENSIONS in asset_store.py.
+const SUPPORTED_REQUIRED_EXTENSIONS = new Set([
+  "EXT_materials_bump",
+  "EXT_mesh_gpu_instancing",
+  "EXT_texture_webp",
+  "KHR_lights_punctual",
+  "KHR_materials_anisotropy",
+  "KHR_materials_clearcoat",
+  "KHR_materials_diffuse_roughness",
+  "KHR_materials_dispersion",
+  "KHR_materials_emissive_strength",
+  "KHR_materials_ior",
+  "KHR_materials_iridescence",
+  "KHR_materials_sheen",
+  "KHR_materials_specular",
+  "KHR_materials_transmission",
+  "KHR_materials_unlit",
+  "KHR_materials_volume",
+  "KHR_mesh_quantization",
+  "KHR_texture_transform",
+]);
 
 export function isGlbFileName(name: string): boolean {
   return /\.(glb)$/i.test(name);
@@ -75,12 +96,30 @@ export function validateGlbHeader(
     if (!Array.isArray(resources) || resources.some((resource) => !isObject(resource))) {
       return { valid: false, reason: `The GLB ${key} list is invalid.` };
     }
+    if (key === "buffers" && resources.some((resource) => "uri" in resource)) {
+      return { valid: false, reason: "GLB buffers must use the BIN chunk without a URI." };
+    }
     if (
+      key === "images" &&
       resources.some(
         ({ uri }) => uri !== undefined && (typeof uri !== "string" || !/^data:/i.test(uri))
       )
     ) {
-      return { valid: false, reason: "The GLB must embed its buffers and images." };
+      return { valid: false, reason: "The GLB must embed its images." };
+    }
+  }
+
+  const extensions = json.extensionsRequired;
+  if (extensions !== undefined) {
+    if (!Array.isArray(extensions) || !extensions.every((ext) => typeof ext === "string")) {
+      return { valid: false, reason: "GLB extensionsRequired must be a list of strings." };
+    }
+    const unsupported = extensions.filter((ext) => !SUPPORTED_REQUIRED_EXTENSIONS.has(ext));
+    if (unsupported.length) {
+      return {
+        valid: false,
+        reason: `GLB requires unsupported extension(s): ${unsupported.join(", ")}`,
+      };
     }
   }
 

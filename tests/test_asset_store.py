@@ -56,6 +56,19 @@ def image_bytes(image_format: str, size: tuple[int, int] = (4, 3)) -> bytes:
     return output.getvalue()
 
 
+def animated_image_bytes(image_format: str) -> bytes:
+    """Create a raster fixture with two distinct frames."""
+    output = BytesIO()
+    Image.new("RGBA", (4, 3), "white").save(
+        output,
+        format=image_format,
+        save_all=True,
+        append_images=[Image.new("RGBA", (4, 3), "black")],
+        duration=100,
+    )
+    return output.getvalue()
+
+
 PNG = image_bytes("PNG")
 JPEG = image_bytes("JPEG")
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="8"/></svg>'
@@ -80,6 +93,19 @@ class AssetValidationTests(unittest.TestCase):
     def test_png_and_jpeg_are_fully_decoded(self) -> None:
         validate_image_bytes(PNG, "image/png")
         validate_image_bytes(JPEG, "image/jpeg")
+
+    def test_rejects_animated_png_uploads_and_svg_embedded_apng(self) -> None:
+        apng = animated_image_bytes("PNG")
+        encoded = base64.b64encode(apng).decode()
+        svg = f'<svg><image href="data:image/png;base64,{encoded}"/></svg>'.encode()
+        for data, content_type in ((apng, "image/png"), (svg, "image/svg+xml")):
+            with (
+                self.subTest(content_type=content_type),
+                self.assertRaisesRegex(
+                    AssetValidationError, "Animated PNG images are not supported"
+                ),
+            ):
+                validate_image_bytes(data, content_type)
 
     def test_signature_only_payload_is_rejected(self) -> None:
         with self.assertRaisesRegex(AssetValidationError, "decoded"):
@@ -120,6 +146,27 @@ class AssetValidationTests(unittest.TestCase):
         </svg>""".encode()
         url = "data:image/svg+xml;base64," + base64.b64encode(svg).decode()
         self.assertEqual((svg, "image/svg+xml"), decode_image_data_url(url))
+
+    def test_svg_fully_validates_embedded_rasters(self) -> None:
+        for raster, error in (
+            (image_bytes("PNG", (ASSET_MODULE.MAX_IMAGE_WIDTH + 1, 1)), "dimensions"),
+            (PNG[:32], "fully decoded"),
+            (JPEG, "does not match"),
+        ):
+            with self.subTest(error=error), self.assertRaisesRegex(AssetValidationError, error):
+                uri = "data:image/png;base64," + base64.b64encode(raster).decode()
+                validate_image_bytes(f'<svg><image href="{uri}"/></svg>'.encode(), "image/svg+xml")
+
+    def test_svg_counts_embedded_pixels_across_href_and_css(self) -> None:
+        uri = "data:image/png;base64," + base64.b64encode(PNG).decode()
+        svg = f'<svg><image href="{uri}"/><style>image {{ fill: url({uri}); }}</style></svg>'
+        with patch.object(ASSET_MODULE, "_MAX_SVG_EMBEDDED_PIXELS", 24):
+            validate_image_bytes(svg.encode(), "image/svg+xml")
+        with (
+            patch.object(ASSET_MODULE, "_MAX_SVG_EMBEDDED_PIXELS", 23),
+            self.assertRaisesRegex(AssetValidationError, "total pixel limit"),
+        ):
+            validate_image_bytes(svg.encode(), "image/svg+xml")
 
     def test_svg_rejects_unsafe_xml_and_external_references(self) -> None:
         for svg in (
@@ -202,9 +249,6 @@ class AssetValidationTests(unittest.TestCase):
             {"images": [{"uri": "data:image/webp;base64,invalid!"}]},
             {"images": [{"bufferView": False}]},
             {"images": [{}]},
-            {"extensionsRequired": ["KHR_draco_mesh_compression"]},
-            {"extensionsRequired": ["EXT_meshopt_compression"]},
-            {"extensionsRequired": ["KHR_texture_basisu"]},
             {"accessors": [{"count": 2_000_001}]},
             {"bufferViews": [{"byteOffset": 0, "byteLength": 8}]},
             {"images": [{"bufferView": 0}], "bufferViews": [{"byteOffset": 0, "byteLength": 4}]},
@@ -212,6 +256,241 @@ class AssetValidationTests(unittest.TestCase):
         for fields in cases:
             with self.subTest(fields=fields), self.assertRaises(AssetValidationError):
                 validate_glb_bytes(make_glb({"asset": {"version": "2.0"}, **fields}, b"abcd"))
+
+    def test_glb_allowlists_required_extensions(self) -> None:
+        document = {"asset": {"version": "2.0"}}
+        supported = [
+            "EXT_materials_bump",
+            "EXT_mesh_gpu_instancing",
+            "EXT_texture_webp",
+            "KHR_materials_diffuse_roughness",
+            "KHR_materials_unlit",
+        ]
+        validate_glb_bytes(make_glb({**document, "extensionsRequired": supported}))
+        for extension in (
+            "KHR_draco_mesh_compression",
+            "EXT_meshopt_compression",
+            "KHR_meshopt_compression",
+            "KHR_materials_pbrSpecularGlossiness",
+            "KHR_texture_basisu",
+            "EXT_unknown",
+        ):
+            with (
+                self.subTest(extension=extension),
+                self.assertRaisesRegex(AssetValidationError, f"unsupported extension.*{extension}"),
+            ):
+                validate_glb_bytes(make_glb({**document, "extensionsRequired": [extension]}))
+        validate_glb_bytes(make_glb({**document, "extensionsUsed": ["EXT_unknown"]}))
+
+    def test_glb_rejects_two_uri_less_buffers(self) -> None:
+        document = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 4}, {"byteLength": 4}],
+        }
+        with self.assertRaisesRegex(AssetValidationError, "at most one BIN buffer"):
+            validate_glb_bytes(make_glb(document, bytes(8)))
+
+    def test_glb_validates_buffer_view_indices_declared_lengths_and_strides(self) -> None:
+        for fields, error in (
+            ({"buffer": 1}, "buffer index"),
+            ({"buffer": False}, "buffer index"),
+            ({"byteOffset": 4}, "declared buffer"),
+            ({"byteStride": 6}, "byteStride"),
+            ({"byteStride": 256}, "byteStride"),
+        ):
+            with self.subTest(fields=fields), self.assertRaisesRegex(AssetValidationError, error):
+                validate_glb_bytes(
+                    make_glb(
+                        {
+                            "asset": {"version": "2.0"},
+                            "buffers": [{"byteLength": 5}],
+                            "bufferViews": [{"buffer": 0, "byteLength": 4, **fields}],
+                        },
+                        bytes(8),
+                    )
+                )
+
+    def test_glb_validates_interleaved_accessor_spans(self) -> None:
+        view = {"buffer": 0, "byteLength": 28, "byteStride": 16}
+        accessor = {"bufferView": 0, "componentType": 5126, "count": 2, "type": "VEC3"}
+        document = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 28}],
+            "bufferViews": [view],
+            "accessors": [accessor],
+        }
+        validate_glb_bytes(make_glb(document, bytes(28)))
+        for fields, error in (
+            ({"bufferView": 1}, "bufferView index"),
+            ({"byteOffset": 2}, "byteOffset"),
+            ({"count": 3}, "byte span"),
+            ({"componentType": 5124}, "componentType"),
+            ({"type": "VEC5"}, "accessor type"),
+        ):
+            with self.subTest(fields=fields), self.assertRaisesRegex(AssetValidationError, error):
+                validate_glb_bytes(
+                    make_glb({**document, "accessors": [{**accessor, **fields}]}, bytes(28))
+                )
+        for fields in ({"byteLength": 27}, {"byteStride": 8}):
+            with (
+                self.subTest(fields=fields),
+                self.assertRaisesRegex(AssetValidationError, "byte span"),
+            ):
+                validate_glb_bytes(
+                    make_glb({**document, "bufferViews": [{**view, **fields}]}, bytes(28))
+                )
+
+    def test_glb_accessor_spans_include_matrix_column_padding(self) -> None:
+        for shape, component, count, length in (
+            ("MAT2", 5121, 1, 6),
+            ("MAT3", 5121, 1, 11),
+            ("MAT3", 5121, 2, 23),
+            ("MAT3", 5123, 1, 22),
+        ):
+            with self.subTest(shape=shape, component=component, count=count):
+                view = {"buffer": 0, "byteLength": length}
+                accessor = {
+                    "bufferView": 0,
+                    "componentType": component,
+                    "count": count,
+                    "type": shape,
+                }
+                document = {
+                    "asset": {"version": "2.0"},
+                    "buffers": [{"byteLength": length + 4}],
+                    "bufferViews": [view],
+                    "accessors": [accessor],
+                }
+                binary = bytes(length + 4)
+                validate_glb_bytes(make_glb(document, binary))
+                view["byteLength"] = length - 1
+                with self.assertRaisesRegex(AssetValidationError, "byte span"):
+                    validate_glb_bytes(make_glb(document, binary))
+                view["byteLength"] = length + 1
+                accessor["byteOffset"] = 1
+                with self.assertRaisesRegex(AssetValidationError, "misaligned"):
+                    validate_glb_bytes(make_glb(document, binary))
+                accessor["byteOffset"] = 0
+                view["byteOffset"] = 1
+                with self.assertRaisesRegex(AssetValidationError, "misaligned"):
+                    validate_glb_bytes(make_glb(document, binary))
+
+    def test_glb_validates_sparse_matrix_value_span_and_alignment(self) -> None:
+        values = {"bufferView": 1}
+        view = {"buffer": 0, "byteOffset": 4, "byteLength": 23}
+        document = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 28}],
+            "bufferViews": [{"buffer": 0, "byteLength": 2}, view],
+            "accessors": [
+                {
+                    "componentType": 5121,
+                    "count": 3,
+                    "type": "MAT3",
+                    "sparse": {
+                        "count": 2,
+                        "indices": {"bufferView": 0, "componentType": 5121},
+                        "values": values,
+                    },
+                }
+            ],
+        }
+        binary = bytes([0, 2]) + bytes(26)
+        validate_glb_bytes(make_glb(document, binary))
+        view["byteLength"] = 22
+        with self.assertRaisesRegex(AssetValidationError, "byte span"):
+            validate_glb_bytes(make_glb(document, binary))
+        view["byteLength"] = 24
+        values["byteOffset"] = 1
+        with self.assertRaisesRegex(AssetValidationError, "misaligned"):
+            validate_glb_bytes(make_glb(document, binary))
+
+    def test_glb_validates_sparse_index_and_value_spans(self) -> None:
+        indices = {"bufferView": 0, "componentType": 5121}
+        values = {"bufferView": 1}
+        sparse = {"count": 2, "indices": indices, "values": values}
+        accessor = {"componentType": 5126, "count": 4, "type": "VEC3", "sparse": sparse}
+        document = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 28}],
+            "bufferViews": [
+                {"buffer": 0, "byteLength": 2},
+                {"buffer": 0, "byteOffset": 4, "byteLength": 24},
+            ],
+            "accessors": [accessor],
+        }
+        binary = bytes([0, 1]) + bytes(26)
+        validate_glb_bytes(make_glb(document, binary))
+        for pair, error in (
+            ([0, 0], "strictly increasing"),
+            ([1, 0], "strictly increasing"),
+            ([0, 4], "out of range"),
+        ):
+            with self.subTest(pair=pair), self.assertRaisesRegex(AssetValidationError, error):
+                validate_glb_bytes(make_glb(document, bytes(pair) + binary[2:]))
+        for fields, error in (
+            ({"count": 5}, "sparse accessor count"),
+            ({"indices": {**indices, "componentType": 5122}}, "index componentType"),
+            ({"indices": {**indices, "byteOffset": 1}}, "byte span"),
+            ({"values": {"bufferView": 2}}, "bufferView index"),
+            ({"values": {**values, "byteOffset": 4}}, "byte span"),
+        ):
+            with self.subTest(fields=fields), self.assertRaisesRegex(AssetValidationError, error):
+                accessor["sparse"] = {**sparse, **fields}
+                validate_glb_bytes(make_glb(document, binary))
+
+    def test_glb_rejects_stride_and_target_on_sparse_buffer_views(self) -> None:
+        views = [
+            {"buffer": 0, "byteLength": 2},
+            {"buffer": 0, "byteOffset": 4, "byteLength": 8},
+        ]
+        document = {
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 12}],
+            "bufferViews": views,
+            "accessors": [
+                {
+                    "componentType": 5126,
+                    "count": 2,
+                    "type": "SCALAR",
+                    "sparse": {
+                        "count": 2,
+                        "indices": {"bufferView": 0, "componentType": 5121},
+                        "values": {"bufferView": 1},
+                    },
+                }
+            ],
+        }
+        binary = bytes([0, 1]) + bytes(10)
+        validate_glb_bytes(make_glb(document, binary))
+        for view_index, field, value in (
+            (0, "byteStride", 4),
+            (0, "target", 34963),
+            (1, "byteStride", 4),
+            (1, "target", 34962),
+        ):
+            buffer_views = views.copy()
+            buffer_views[view_index] = {**views[view_index], field: value}
+            with (
+                self.subTest(view_index=view_index, field=field),
+                self.assertRaisesRegex(AssetValidationError, "sparse accessor bufferView"),
+            ):
+                validate_glb_bytes(make_glb({**document, "bufferViews": buffer_views}, binary))
+
+    def test_glb_rejects_animated_png_and_webp_textures(self) -> None:
+        for image_format in ("PNG", "WEBP"):
+            texture = animated_image_bytes(image_format)
+            document = {
+                "asset": {"version": "2.0"},
+                "buffers": [{"byteLength": len(texture)}],
+                "bufferViews": [{"buffer": 0, "byteLength": len(texture)}],
+                "images": [{"bufferView": 0, "mimeType": f"image/{image_format.lower()}"}],
+            }
+            with (
+                self.subTest(image_format=image_format),
+                self.assertRaisesRegex(AssetValidationError, "animated textures"),
+            ):
+                validate_glb_bytes(make_glb(document, texture))
 
     def test_glb_accepts_valid_embedded_bufferview_png_and_rejects_oversized_texture(self) -> None:
         padded_png = PNG + b"\x00" * ((4 - len(PNG) % 4) % 4)

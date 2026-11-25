@@ -180,7 +180,7 @@ class ConfigSchemaContractTests(unittest.TestCase):
             marker.pop("icon")
             self.validator.validate(FloorplanStore.validate_and_normalize(config))
 
-    def test_unknown_nested_fields_and_null_collections_are_rejected(self) -> None:
+    def test_unknown_nested_fields_and_null_collections_are_rejected_in_v4(self) -> None:
         paths = [
             ("plans", 0, "markers", 0, "pos"),
             ("plans", 0, "markers", 0, "bind"),
@@ -194,6 +194,7 @@ class ConfigSchemaContractTests(unittest.TestCase):
         for path in paths:
             with self.subTest(path=path):
                 config = valid_config()
+                config["version"] = 4
                 config["views"][0]["marker_overlay"] = {
                     "primary": {"mode": "entity", "entity_id": "sensor.temp", "source": "state"},
                     "badges": [{"entity_id": "light.a", "when": {"state_is": "on"}}],
@@ -211,6 +212,7 @@ class ConfigSchemaContractTests(unittest.TestCase):
             {"marker_overlay": {"badges": None}},
         ):
             config = valid_config()
+            config["version"] = 4
             config["views"][0].update(values)
             with self.assertRaises(ValueError):
                 FloorplanStore.validate_and_normalize(config)
